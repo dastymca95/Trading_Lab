@@ -21,6 +21,24 @@ from src.london_bot.london_params import (
     validate_symbol,
     init_volume_means,
 )
+from src.london_bot.scheduler_london import (
+    is_new_mt5_day,
+    reset_daily_trades,
+    get_current_time_parts,
+    is_signal_scan_window,
+    build_signal_key,
+    should_run_for_asset,
+    should_emit_heartbeat,
+)
+from src.london_bot.risk_manager_london import (
+    can_evaluate_signal,
+    can_execute_trade,
+)
+from src.london_bot.pnl_tracker_london import log_pnl_summary
+from src.london_bot.manual_test import force_demo_trade
+from src.london_bot.parity_logger import ensure_parity_csv, write_parity_row
+
+FORCE_PARITY_SCAN = False
 
 
 def main() -> None:
@@ -41,6 +59,9 @@ def main() -> None:
         audit_columns=config["audit"]["columns"],
         logger=log,
     )
+    ensure_parity_csv(
+        parity_file=config["paths"]["parity_file"],
+    )
 
     if not connect_mt5(
         logger=log,
@@ -53,6 +74,41 @@ def main() -> None:
         asset_strategy=config["assets"],
         logger=log,
     )
+
+    if config["testing"]["force_test_trade"]:
+        test_direction = int(config["testing"]["force_test_direction"])
+        if test_direction not in (1, -1):
+            log.error("force_test_direction debe ser 1 (BUY) o -1 (SELL)")
+            return
+
+        pos = force_demo_trade(
+            symbol=config["testing"]["force_test_symbol"],
+            direction=test_direction,
+            asset_params=asset_params,
+            bot_magic=config["bot"]["magic"],
+            deviation=config["execution"]["deviation"],
+            logger=log,
+        )
+
+        if pos:
+            open_positions_test = {
+                config["testing"]["force_test_symbol"]: pos
+            }
+            trades_today_test = {
+                config["testing"]["force_test_symbol"]: 1
+            }
+
+            save_state(
+                open_positions=open_positions_test,
+                trades_today=trades_today_test,
+                state_file=config["paths"]["state_file"],
+                logger=log,
+            )
+
+        if config["testing"]["force_test_return_after_open"]:
+            log.info("🧪 Prueba manual completada. Script finalizado por configuración.")
+            shutdown_mt5()
+            return
 
     log.info(
         f"env={config['env_name']} | "
@@ -83,6 +139,10 @@ def main() -> None:
         bot_magic=config["bot"]["magic"],
         logger=log,
     )
+    log_pnl_summary(
+        audit_file=config["paths"]["audit_file"],
+        logger=log,
+    )
 
     save_state(
         open_positions=open_positions,
@@ -108,9 +168,9 @@ def main() -> None:
             mt5_now = get_mt5_now(offset_hours=config["mt5"]["offset_hours"])
 
             # Nuevo día MT5
-            if last_date != mt5_now.date():
+            if is_new_mt5_day(last_date, mt5_now):
                 last_date = mt5_now.date()
-                trades_today = {symbol: 0 for symbol in asset_params}
+                trades_today = reset_daily_trades(asset_params)
                 last_signal_check.clear()
 
                 save_state(
@@ -142,6 +202,12 @@ def main() -> None:
                         bot_magic=config["bot"]["magic"],
                         logger=log,
                     )
+
+                    log_pnl_summary(
+                        audit_file=config["paths"]["audit_file"],
+                        logger=log,
+                    )
+
                     open_positions.pop(symbol)
                     state_changed = True
 
@@ -160,20 +226,21 @@ def main() -> None:
                     logger=log,
                 )
 
-            current_hour = mt5_now.hour
-            current_minute = mt5_now.minute
+            current_hour, current_minute = get_current_time_parts(mt5_now)
 
             # Escaneo de señales
-            if current_minute in scan_minutes and current_hour in signal_hours:
+
+            if FORCE_PARITY_SCAN or is_signal_scan_window(mt5_now, signal_hours, scan_minutes):
                 for symbol, params in asset_params.items():
-                    if current_hour not in params["hours"]:
+                    if not FORCE_PARITY_SCAN and not should_run_for_asset(current_hour, params):
                         continue
 
-                    key = f"{symbol}_{mt5_now.date()}_{current_hour}"
+                    key = build_signal_key(symbol, mt5_now, current_hour)
                     if key in last_signal_check:
                         continue
 
                     if symbol in open_positions:
+                        log.info(f"{symbol}: evaluación omitida | reason=ya existe posición abierta en este símbolo")
                         last_signal_check[key] = True
                         continue
 
@@ -184,15 +251,46 @@ def main() -> None:
                         f"symbol={symbol}"
                     )
 
+                    if FORCE_PARITY_SCAN:
+                        can_eval, eval_reason = True, "forced_parity_scan"
+                    else:
+                        can_eval, eval_reason = can_evaluate_signal(
+                            symbol=symbol,
+                            signal_hour=current_hour,
+                            mt5_now=mt5_now,
+                            asset_params=params,
+                            trades_today=trades_today.get(symbol, 0),
+                            max_trades_per_day_per_asset=config["bot"]["max_trades_per_day_per_asset"],
+                            open_positions=open_positions,
+                        )
+
+                    if not can_eval:
+                        log.info(f"{symbol}: evaluación omitida | reason={eval_reason}")
+
+                        write_parity_row(
+                            parity_file=config["paths"]["parity_file"],
+                            bot_version="modular",
+                            symbol=symbol,
+                            signal_hour=current_hour,
+                            mt5_time=mt5_now,
+                            can_eval=False,
+                            eval_reason=eval_reason,
+                            signal_found=False,
+                            signal_payload=None,
+                            exec_allowed=False,
+                            exec_reason="not_applicable",
+                        )
+
+                        last_signal_check[key] = True
+                        continue
+
                     sig = check_signal(
                         symbol=symbol,
                         asset_params=params,
-                        trades_today=trades_today.get(symbol, 0),
                         signal_hour=current_hour,
                         mt5_now=mt5_now,
                         volume_means=volume_means,
                         initial_capital_per_asset=config["bot"]["initial_capital_per_asset"],
-                        max_trades_per_day_per_asset=config["bot"]["max_trades_per_day_per_asset"],
                     )
 
                     if sig:
@@ -206,10 +304,27 @@ def main() -> None:
                             f"vm={volume_means.get(symbol, 0.0):.1f}"
                         )
 
-                        if not config["mode"]["execution_enabled"]:
-                            log.info(
-                                f"[SHADOW] Señal detectada pero execution_enabled=False | {symbol}"
-                            )
+                        can_exec, exec_reason = can_execute_trade(
+                            config=config,
+                            symbol=symbol,
+                            logger=log,
+                        )
+                        write_parity_row(
+                            parity_file=config["paths"]["parity_file"],
+                            bot_version="modular",
+                            symbol=symbol,
+                            signal_hour=current_hour,
+                            mt5_time=mt5_now,
+                            can_eval=True,
+                            eval_reason=eval_reason,
+                            signal_found=True,
+                            signal_payload=sig,
+                            exec_allowed=can_exec,
+                            exec_reason=exec_reason,
+                        )
+
+                        if not can_exec:
+                            log.info(f"{symbol}: ejecución omitida | reason={exec_reason}")
                         else:
                             pos = open_position(
                                 symbol=sig["symbol"],
@@ -236,13 +351,32 @@ def main() -> None:
                                     state_file=config["paths"]["state_file"],
                                     logger=log,
                                 )
+
+
                     else:
+
                         log.info("— Sin señal")
+
+                        write_parity_row(
+
+                            parity_file=config["paths"]["parity_file"],
+                            bot_version="modular",
+                            symbol=symbol,
+                            signal_hour=current_hour,
+                            mt5_time=mt5_now,
+                            can_eval=True,
+                            eval_reason=eval_reason,
+                            signal_found=False,
+                            signal_payload=None,
+                            exec_allowed=False,
+                            exec_reason="no_signal",
+
+                        )
 
                     last_signal_check[key] = True
 
             # Heartbeat horario
-            if current_minute == 0 and now.second < 30:
+            if should_emit_heartbeat(now, current_minute):
                 info = get_account_info()
                 balance = info.balance if info else 0.0
                 log.info(

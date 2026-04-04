@@ -1,0 +1,141 @@
+2026-04-04 15:12:53,455 | INFO | ╔════════════════════════════════════════════════════════════╗
+2026-04-04 15:12:53,455 | INFO | ║ BOT DEMO v7 ULTRA CORREGIDO — London Range Breakout      ║
+2026-04-04 15:12:53,456 | INFO | ╚════════════════════════════════════════════════════════════╝
+2026-04-04 15:12:53,475 | INFO | Conectado | Cuenta: 52814026 | Balance: $945.96 | Demo: True
+2026-04-04 15:12:53,476 | INFO | risk_pct=2.00% | capital/activo=$250.0 | MT5_offset=1h | prefer_parquet_vm=True
+2026-04-04 15:12:53,476 | INFO | XAUUSD: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.01 | volume_step=0.01 | stops_level=0 | freeze_level=0
+2026-04-04 15:12:53,477 | INFO | US30: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 15:12:53,477 | INFO | USTEC: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 15:12:53,477 | INFO | US500: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 15:12:53,477 | INFO | DE40: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 15:12:53,477 | INFO | Calculando medias de volumen histórico...
+2026-04-04 15:13:13,664 | INFO |   XAUUSD: vm_global=213.0 | source=mt5_history
+2026-04-04 15:13:34,408 | INFO |   US30: vm_global=147.2 | source=mt5_history
+2026-04-04 15:13:53,475 | INFO |   USTEC: vm_global=244.1 | source=mt5_history
+2026-04-04 15:14:12,868 | INFO |   US500: vm_global=93.5 | source=mt5_history
+2026-04-04 15:14:32,831 | INFO |   DE40: vm_global=87.4 | source=mt5_history
+2026-04-04 15:14:32,833 | INFO | Bot corriendo. Señal base: vela 15:00 / 18:00; escaneo a 15:02-15:03 / 18:02-18:03 MT5...
+
+2026-04-04 15:14:32,842 | INFO | ── Nuevo día MT5: 2026-04-04 ──
+2026-04-04 15:15:10,540 | INFO | Bot detenido manualmente.
+2026-04-04 15:15:10,541 | INFO | Bot finalizado()
+2026-04-04 15:57:41,910 | INFO | ╔════════════════════════════════════════════════════════════╗
+2026-04-04 15:57:41,911 | INFO | ║ BOT DEMO v7 ULTRA CORREGIDO — London Range Breakout      ║
+2026-04-04 15:57:41,911 | INFO | ╚════════════════════════════════════════════════════════════╝
+2026-04-04 15:57:41,930 | INFO | Conectado | Cuenta: 52814026 | Balance: $945.96 | Demo: True
+2026-04-04 15:57:41,933 | INFO | risk_pct=2.00% | capital/activo=$250.0 | MT5_offset=1h | prefer_parquet_vm=True
+2026-04-04 15:57:41,933 | INFO | XAUUSD: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.01 | volume_step=0.01 | stops_level=0 | freeze_level=0
+2026-04-04 15:57:41,933 | INFO | US30: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 15:57:41,933 | INFO | USTEC: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 15:57:41,933 | INFO | US500: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 15:57:41,934 | INFO | DE40: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 15:57:41,934 | INFO | Calculando medias de volumen histórico...
+2026-04-04 15:57:42,073 | INFO |   XAUUSD: vm_global=213.0 | source=mt5_history
+2026-04-04 15:57:42,220 | INFO |   US30: vm_global=147.2 | source=mt5_history
+2026-04-04 15:57:42,423 | INFO |   USTEC: vm_global=244.1 | source=mt5_history
+2026-04-04 15:57:42,675 | INFO |   US500: vm_global=93.5 | source=mt5_history
+2026-04-04 15:57:42,914 | INFO |   DE40: vm_global=87.4 | source=mt5_history
+2026-04-04 15:57:42,915 | INFO | Estado cargado (guardado: 2026-04-04T15:15:10.541069) | Posiciones: [] | Trades hoy: {'XAUUSD': 0, 'US30': 0, 'USTEC': 0, 'US500': 0, 'DE40': 0}
+2026-04-04 15:57:42,918 | INFO | Bot corriendo. Señal base: vela 15:00 / 18:00; escaneo a 15:02-15:03 / 18:02-18:03 MT5...
+
+2026-04-04 15:57:42,920 | INFO | ── Nuevo día MT5: 2026-04-04 ──
+2026-04-04 15:58:22,651 | INFO | Bot detenido manualmente.
+2026-04-04 15:58:22,654 | INFO | Bot finalizado()
+2026-04-04 16:23:12,118 | INFO | ╔════════════════════════════════════════════════════════════╗
+2026-04-04 16:23:12,118 | INFO | ║ BOT DEMO v7 ULTRA CORREGIDO — London Range Breakout      ║
+2026-04-04 16:23:12,118 | INFO | ╚════════════════════════════════════════════════════════════╝
+2026-04-04 16:23:12,136 | INFO | Conectado | Cuenta: 52814026 | Balance: $945.96 | Demo: True
+2026-04-04 16:23:12,137 | INFO | risk_pct=2.00% | capital/activo=$250.0 | MT5_offset=1h | prefer_parquet_vm=True
+2026-04-04 16:23:12,137 | INFO | XAUUSD: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.01 | volume_step=0.01 | stops_level=0 | freeze_level=0
+2026-04-04 16:23:12,137 | INFO | US30: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:23:12,138 | INFO | USTEC: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:23:12,138 | INFO | US500: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:23:12,138 | INFO | DE40: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:23:12,138 | INFO | Calculando medias de volumen histórico...
+2026-04-04 16:23:12,266 | INFO |   XAUUSD: vm_global=213.0 | source=mt5_history
+2026-04-04 16:23:12,455 | INFO |   US30: vm_global=147.2 | source=mt5_history
+2026-04-04 16:23:12,644 | INFO |   USTEC: vm_global=244.1 | source=mt5_history
+2026-04-04 16:23:12,825 | INFO |   US500: vm_global=93.5 | source=mt5_history
+2026-04-04 16:23:12,952 | INFO |   DE40: vm_global=87.4 | source=mt5_history
+2026-04-04 16:23:12,952 | INFO | Estado cargado (guardado: 2026-04-04T15:58:22.651831) | Posiciones: [] | Trades hoy: {'XAUUSD': 0, 'US30': 0, 'USTEC': 0, 'US500': 0, 'DE40': 0}
+2026-04-04 16:23:12,954 | INFO | Bot corriendo. Señal base: vela 15:00 / 18:00; escaneo a 15:02-15:03 / 18:02-18:03 MT5...
+
+2026-04-04 16:23:12,954 | INFO | ── Nuevo día MT5: 2026-04-04 ──
+2026-04-04 16:23:25,574 | INFO | Bot detenido manualmente.
+2026-04-04 16:23:25,575 | INFO | Bot finalizado()
+2026-04-04 16:29:17,510 | INFO | ╔════════════════════════════════════════════════════════════╗
+2026-04-04 16:29:17,510 | INFO | ║ BOT DEMO v7 ULTRA CORREGIDO — London Range Breakout      ║
+2026-04-04 16:29:17,510 | INFO | ╚════════════════════════════════════════════════════════════╝
+2026-04-04 16:29:17,530 | INFO | Conectado | Cuenta: 52814026 | Balance: $945.96 | Demo: True
+2026-04-04 16:29:17,531 | INFO | risk_pct=2.00% | capital/activo=$250.0 | MT5_offset=1h | prefer_parquet_vm=True
+2026-04-04 16:29:17,531 | INFO | XAUUSD: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.01 | volume_step=0.01 | stops_level=0 | freeze_level=0
+2026-04-04 16:29:17,531 | INFO | US30: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:29:17,532 | INFO | USTEC: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:29:17,532 | INFO | US500: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:29:17,532 | INFO | DE40: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:29:17,532 | INFO | Calculando medias de volumen histórico...
+2026-04-04 16:29:17,643 | INFO |   XAUUSD: vm_global=213.0 | source=mt5_history
+2026-04-04 16:29:17,766 | INFO |   US30: vm_global=147.2 | source=mt5_history
+2026-04-04 16:29:17,892 | INFO |   USTEC: vm_global=244.1 | source=mt5_history
+2026-04-04 16:29:18,020 | INFO |   US500: vm_global=93.5 | source=mt5_history
+2026-04-04 16:29:18,146 | INFO |   DE40: vm_global=87.4 | source=mt5_history
+2026-04-04 16:29:18,147 | INFO | Estado cargado (guardado: 2026-04-04T16:23:25.574199) | Posiciones: [] | Trades hoy: {'XAUUSD': 0, 'US30': 0, 'USTEC': 0, 'US500': 0, 'DE40': 0}
+2026-04-04 16:29:18,148 | INFO | Bot corriendo. Señal base: vela 15:00 / 18:00; escaneo a 15:02-15:03 / 18:02-18:03 MT5...
+
+2026-04-04 16:29:18,149 | INFO | ── Nuevo día MT5: 2026-04-04 ──
+2026-04-04 16:29:21,285 | INFO | Bot detenido manualmente.
+2026-04-04 16:29:21,287 | INFO | Bot finalizado()
+2026-04-04 16:34:20,468 | INFO | ╔════════════════════════════════════════════════════════════╗
+2026-04-04 16:34:20,468 | INFO | ║ BOT DEMO v7 ULTRA CORREGIDO — London Range Breakout      ║
+2026-04-04 16:34:20,468 | INFO | ╚════════════════════════════════════════════════════════════╝
+2026-04-04 16:34:20,486 | INFO | Conectado | Cuenta: 52814026 | Balance: $945.96 | Demo: True
+2026-04-04 16:34:20,487 | INFO | risk_pct=2.00% | capital/activo=$250.0 | MT5_offset=1h | prefer_parquet_vm=True
+2026-04-04 16:34:20,487 | INFO | XAUUSD: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.01 | volume_step=0.01 | stops_level=0 | freeze_level=0
+2026-04-04 16:34:20,488 | INFO | US30: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:34:20,488 | INFO | USTEC: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:34:20,489 | INFO | US500: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:34:20,489 | INFO | DE40: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 16:34:20,489 | INFO | Calculando medias de volumen histórico...
+2026-04-04 16:34:20,609 | INFO |   XAUUSD: vm_global=213.0 | source=mt5_history
+2026-04-04 16:34:20,735 | INFO |   US30: vm_global=147.2 | source=mt5_history
+2026-04-04 16:34:20,864 | INFO |   USTEC: vm_global=244.1 | source=mt5_history
+2026-04-04 16:34:20,985 | INFO |   US500: vm_global=93.5 | source=mt5_history
+2026-04-04 16:34:21,097 | INFO |   DE40: vm_global=87.4 | source=mt5_history
+2026-04-04 16:34:21,097 | INFO | Estado cargado (guardado: 2026-04-04T16:29:21.285973) | Posiciones: [] | Trades hoy: {'XAUUSD': 0, 'US30': 0, 'USTEC': 0, 'US500': 0, 'DE40': 0}
+2026-04-04 16:34:21,099 | INFO | Bot corriendo. Señal base: vela 15:00 / 18:00; escaneo a 15:02-15:03 / 18:02-18:03 MT5...
+
+2026-04-04 16:34:21,100 | INFO | ── Nuevo día MT5: 2026-04-04 ──
+2026-04-04 16:34:24,598 | INFO | Bot detenido manualmente.
+2026-04-04 16:34:24,599 | INFO | Bot finalizado()
+2026-04-04 17:02:25,143 | INFO | ╔════════════════════════════════════════════════════════════╗
+2026-04-04 17:02:25,143 | INFO | ║ BOT DEMO v7 ULTRA CORREGIDO — London Range Breakout      ║
+2026-04-04 17:02:25,143 | INFO | ╚════════════════════════════════════════════════════════════╝
+2026-04-04 17:02:25,164 | INFO | Conectado | Cuenta: 52814026 | Balance: $945.96 | Demo: True
+2026-04-04 17:02:25,164 | INFO | risk_pct=2.00% | capital/activo=$250.0 | MT5_offset=1h | prefer_parquet_vm=True
+2026-04-04 17:02:25,164 | INFO | XAUUSD: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.01 | volume_step=0.01 | stops_level=0 | freeze_level=0
+2026-04-04 17:02:25,166 | INFO | US30: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 17:02:25,166 | INFO | USTEC: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 17:02:25,166 | INFO | US500: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 17:02:25,166 | INFO | DE40: trade_mode=4 | trade_exemode=2 | filling_mode=2 | volume_min=0.1 | volume_step=0.1 | stops_level=0 | freeze_level=0
+2026-04-04 17:02:25,166 | INFO | Calculando medias de volumen histórico...
+2026-04-04 17:02:25,472 | INFO |   XAUUSD: vm_global=213.0 | source=mt5_history
+2026-04-04 17:02:25,650 | INFO |   US30: vm_global=147.2 | source=mt5_history
+2026-04-04 17:02:25,883 | INFO |   USTEC: vm_global=244.1 | source=mt5_history
+2026-04-04 17:02:26,082 | INFO |   US500: vm_global=93.5 | source=mt5_history
+2026-04-04 17:02:26,278 | INFO |   DE40: vm_global=87.4 | source=mt5_history
+2026-04-04 17:02:26,279 | INFO | Estado cargado (guardado: 2026-04-04T16:34:24.598541) | Posiciones: [] | Trades hoy: {'XAUUSD': 0, 'US30': 0, 'USTEC': 0, 'US500': 0, 'DE40': 0}
+2026-04-04 17:02:26,281 | INFO | Bot corriendo. Señal base: vela 15:00 / 18:00; escaneo a 15:02-15:03 / 18:02-18:03 MT5...
+
+2026-04-04 17:02:26,283 | INFO | ── Nuevo día MT5: 2026-04-04 ──
+2026-04-04 17:02:26,284 | INFO | 🔍 Revisando vela 18:00 MT5 (scan 18:02) | capital=$250.0 | symbol=XAUUSD
+2026-04-04 17:02:26,317 | INFO | — Sin señal
+2026-04-04 17:02:26,319 | INFO | 🔍 Revisando vela 18:00 MT5 (scan 18:02) | capital=$250.0 | symbol=US30
+2026-04-04 17:02:26,324 | INFO | — Sin señal
+2026-04-04 17:02:26,326 | INFO | 🔍 Revisando vela 18:00 MT5 (scan 18:02) | capital=$250.0 | symbol=USTEC
+2026-04-04 17:02:26,330 | INFO | — Sin señal
+2026-04-04 17:02:26,331 | INFO | 🔍 Revisando vela 18:00 MT5 (scan 18:02) | capital=$250.0 | symbol=US500
+2026-04-04 17:02:26,337 | INFO | — Sin señal
+2026-04-04 17:02:26,338 | INFO | 🔍 Revisando vela 18:00 MT5 (scan 18:02) | capital=$250.0 | symbol=DE40
+2026-04-04 17:02:26,342 | INFO | — Sin señal
+2026-04-04 17:02:48,150 | INFO | Bot detenido manualmente.
+2026-04-04 17:02:48,153 | INFO | Bot finalizado()

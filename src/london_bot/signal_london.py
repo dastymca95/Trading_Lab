@@ -12,27 +12,17 @@ from src.shared.risk_utils import calc_lots
 def check_signal(
     symbol: str,
     asset_params: Dict[str, Any],
-    trades_today: int,
     signal_hour: int,
     mt5_now: datetime,
     volume_means: Dict[str, float],
     initial_capital_per_asset: float,
-    max_trades_per_day_per_asset: int,
 ) -> Optional[Dict[str, Any]]:
     """
     Evalúa si existe señal London Range Breakout para un símbolo dado.
 
-    Devuelve un dict con la señal lista para ejecución o None si no hay setup válido.
+    Asume que los filtros operativos externos ya fueron validados
+    en risk_manager_london.py.
     """
-    # Filtro por día permitido
-    if mt5_now.weekday() not in asset_params["dow"]:
-        return None
-
-    # Filtro por máximo de trades por día
-    if trades_today >= max_trades_per_day_per_asset:
-        return None
-
-    # Contexto de señal
     ctx = get_signal_context(
         symbol=symbol,
         signal_date=mt5_now.date(),
@@ -54,23 +44,19 @@ def check_signal(
     lrr = float(ctx["lrr"])
     spread_signal = float(ctx["spread_signal"])
 
-    # Si ATR es inválido, descartar
     if atr_value <= 0:
         return None
 
-    # Filtro por volumen relativo vs media histórica
     volume_mean = volume_means.get(symbol, 0.0)
     if volume_mean > 0 and tick_volume < volume_mean:
         return None
 
-    # Filtro por London range ratio mínimo
     if not np.isfinite(lrr) or lrr <= asset_params["lrr_min"]:
         return None
 
     direction = None
     signal_type = ""
 
-    # Breakout London High / Low
     if entry_price > london_high:
         direction = 1
         signal_type = f"Breakout ALCISTA (London High={london_high:.{asset_params['digits']}f})"
@@ -79,7 +65,6 @@ def check_signal(
         direction = -1
         signal_type = f"Breakout BAJISTA (London Low={london_low:.{asset_params['digits']}f})"
 
-    # Vela grande tipo expansión
     elif candle_range > asset_params["atr_mult"] * atr_value:
         direction = -1 if signal_row["close"] > signal_row["open"] else 1
         signal_type = (
@@ -90,7 +75,6 @@ def check_signal(
     if direction is None:
         return None
 
-    # Stop inicial
     if direction == 1:
         stop_loss = entry_price * (1 - asset_params["sl_pct"])
         stop_loss = max(stop_loss, london_low)
@@ -98,7 +82,6 @@ def check_signal(
         stop_loss = entry_price * (1 + asset_params["sl_pct"])
         stop_loss = min(stop_loss, london_high)
 
-    # Distancia efectiva del stop incluyendo spread
     stop_distance = max(
         abs(entry_price - stop_loss) + spread_signal,
         entry_price * 0.0015,
