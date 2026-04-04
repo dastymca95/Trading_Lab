@@ -1,0 +1,21 @@
+env/
+
+# ===== Jupyter =====
+.ipynb_checkpoints/
+
+# ===== Logs =====
+*.log
+
+# ===== Data / Models =====
+*.pkl
+*.parquet
+*.csv
+*.xlsx
+
+# ===== OS Files =====
+.DS_Store
+Thumbs.db
+
+# ===== IDE =====
+.idea/
+.vscode/
