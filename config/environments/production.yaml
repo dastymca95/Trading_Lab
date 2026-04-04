@@ -1,0 +1,40 @@
+env_name: production
+
+mode:
+  live_trading: true
+  paper_trading: false
+  execution_enabled: true
+  shadow_mode: false
+
+mt5:
+  offset_hours: 1
+  account_alias: live_icmarkets
+  terminal_path: "C:/Program Files/MetaTrader 5/terminal64.exe"
+
+bot:
+  magic: 20260402
+  trailing_check_seconds: 10
+  initial_capital_per_asset: 250.0
+  max_trades_per_day_per_asset: 1
+
+testing:
+  force_test_trade: false
+  force_test_symbol: "US30"
+  force_test_direction: 1
+  force_test_return_after_open: true
+
+execution:
+  deviation: 20
+  allowed_order_types: ["market"]
+  latency_checks_enabled: true
+
+logging:
+  level: "INFO"
+  save_trade_journal: true
+  save_market_snapshots: false
+  save_execution_audit: true
+
+paths:
+  state_file: "data/state/london_bot_state.json"
+  audit_file: "reports/execution_audit/slippage_audit.csv"
+  log_dir: "logs/london_bot/"

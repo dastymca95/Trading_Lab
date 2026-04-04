@@ -1,0 +1,108 @@
+strategy:
+  name: london_range_breakout
+  version: v1
+  signal_hours_mt5: [15, 18]
+  london_session_start_hour: 9
+  london_session_end_hour: 15
+  scan_minutes_after_signal: [2, 3]
+
+filters:
+  volume_history_from: "2018-01-01"
+  prefer_parquet_for_volume_mean: true
+
+audit:
+  columns:
+    - datetime
+    - asset
+    - direction
+    - lots
+    - signal_price
+    - real_entry_price
+    - slippage_pts
+    - spread_signal
+    - spread_at_entry
+    - execution_ms
+    - pnl_real
+    - pnl_backtest_approx
+    - exit_reason
+
+assets:
+  XAUUSD:
+    sl_pct: 0.003
+    trail_mult: 1.0
+    risk_pct: 0.02
+    lrr_min: 1.5
+    hours: [15, 18]
+    dow: [1, 2, 3, 4]
+    atr_mult: 1.5
+    fallback_comm: 7.00
+    fallback_cs: 100
+    fallback_ml: 0.01
+    fallback_step: 0.01
+    fallback_sp: 0.30
+    fallback_digits: 2
+    fallback_jpy: false
+
+  US30:
+    sl_pct: 0.003
+    trail_mult: 3.0
+    risk_pct: 0.02
+    lrr_min: 1.0
+    hours: [15, 18]
+    dow: [0, 1, 2, 3, 4]
+    atr_mult: 1.5
+    fallback_comm: 0.00
+    fallback_cs: 1
+    fallback_ml: 0.1
+    fallback_step: 0.1
+    fallback_sp: 3.0
+    fallback_digits: 2
+    fallback_jpy: false
+
+  USTEC:
+    sl_pct: 0.003
+    trail_mult: 3.0
+    risk_pct: 0.02
+    lrr_min: 1.0
+    hours: [15, 18]
+    dow: [0, 1, 2, 3, 4]
+    atr_mult: 1.5
+    fallback_comm: 0.00
+    fallback_cs: 1
+    fallback_ml: 0.1
+    fallback_step: 0.1
+    fallback_sp: 1.0
+    fallback_digits: 2
+    fallback_jpy: false
+
+  US500:
+    sl_pct: 0.003
+    trail_mult: 3.0
+    risk_pct: 0.02
+    lrr_min: 1.0
+    hours: [15, 18]
+    dow: [0, 1, 2, 3, 4]
+    atr_mult: 1.5
+    fallback_comm: 0.00
+    fallback_cs: 1
+    fallback_ml: 0.1
+    fallback_step: 0.1
+    fallback_sp: 0.5
+    fallback_digits: 2
+    fallback_jpy: false
+
+  DE40:
+    sl_pct: 0.003
+    trail_mult: 3.0
+    risk_pct: 0.02
+    lrr_min: 1.0
+    hours: [15, 18]
+    dow: [0, 1, 2, 3, 4]
+    atr_mult: 1.5
+    fallback_comm: 0.00
+    fallback_cs: 1
+    fallback_ml: 0.1
+    fallback_step: 0.1
+    fallback_sp: 1.0
+    fallback_digits: 2
+    fallback_jpy: false
