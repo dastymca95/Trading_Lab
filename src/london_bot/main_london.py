@@ -188,10 +188,10 @@ def main() -> None:
             state_changed = False
 
             for symbol, pos in list(open_positions.items()):
-                digits = pos.get("digits", 2)
-                sl_before = pos.get("sl", 0.0)
-                be_before = pos.get("breakeven_hit", False)
-                bp_before = pos.get("best_price", 0.0)
+                digits = pos.digits
+                sl_before = pos.sl
+                be_before = pos.breakeven_hit
+                bp_before = pos.best_price
 
                 status = update_trailing(position=pos, logger=log)
 
@@ -214,9 +214,9 @@ def main() -> None:
                     state_changed = True
 
                 elif (
-                    pos.get("sl", 0.0) != sl_before
-                    or pos.get("breakeven_hit", False) != be_before
-                    or abs(pos.get("best_price", 0.0) - bp_before) > 10 ** (-digits)
+                    pos.sl != sl_before
+                    or pos.breakeven_hit != be_before
+                    or abs(pos.best_price - bp_before) > 10 ** (-digits)
                 ):
                     state_changed = True
 
