@@ -61,8 +61,8 @@ def force_demo_trade(
     )
 
     if pos:
-        pos["atr"] = 1.0
-        logger.info(f"🧪 PRUEBA EXITOSA {symbol} | pos_ticket={pos['ticket']}")
+        pos.atr = 1.0
+        logger.info(f"🧪 PRUEBA EXITOSA {symbol} | pos_ticket={pos.ticket}")
     else:
         logger.error(f"🧪 PRUEBA FALLÓ {symbol}")
 
