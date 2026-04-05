@@ -29,7 +29,6 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy import stats as scipy_stats
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
@@ -45,8 +44,7 @@ except Exception:
 
 from backtest_config import (
     INITIAL_PER_ASSET, USE_LIVE_SPECS,
-    TEST_START, MAX_BARS, ROLLING_SHARPE_WIN,
-    MONTE_CARLO_RUNS, BOOTSTRAP_RUNS,
+    TEST_START, MAX_BARS,
     ASSET_PARAMS_BASE, OPTIONAL_PARAMS,
     COMMISSION_MANUAL_RT,
 )
@@ -299,128 +297,10 @@ def run_backtest(asset, df, lr, vm, p, cap_start, date_start=None, date_end=None
 # MÉTRICAS
 # ═══════════════════════════════════════════════════════════════════════
 
-def bootstrap_mean_ci(x, runs=BOOTSTRAP_RUNS, alpha=0.05):
-    x = np.asarray(x, dtype=float)
-    if len(x) == 0: return 0.0, 0.0
-    means = np.array([np.random.choice(x, len(x), replace=True).mean() for _ in range(runs)])
-    return float(np.quantile(means, alpha/2)), float(np.quantile(means, 1-alpha/2))
-
-
-def sign_test_pvalue(x):
-    x = np.asarray(x, dtype=float); x = x[x != 0]
-    n = len(x)
-    if n == 0: return 1.0
-    return float(scipy_stats.binomtest(int((x>0).sum()), n=n, p=0.5, alternative='two-sided').pvalue)
-
-
-def monte_carlo_dd(pnl_arr, cap0, runs=MONTE_CARLO_RUNS):
-    pnl_arr = np.asarray(pnl_arr, dtype=float)
-    if len(pnl_arr) == 0:
-        return 0.0, 0.0, 0.0, cap0
-
-    dds = np.empty(runs)
-    finals = np.empty(runs)
-
-    for i in range(runs):
-        shuffled = np.random.permutation(pnl_arr)
-        cap = cap0
-        eq = [cap]
-        for p in shuffled:
-            cap = max(cap + p, 0.01)
-            eq.append(cap)
-        eq = np.array(eq)
-        pk = np.maximum.accumulate(eq)
-        dds[i] = ((eq - pk) / pk * 100).min()
-        finals[i] = eq[-1]
-
-    return float(np.quantile(dds, 0.05)), float(np.median(dds)), float(np.quantile(dds, 0.95)), float(np.median(finals))
-
-
-def daily_equity(t, cap0):
-    if len(t) == 0:
-        return pd.DataFrame(columns=['Date','DailyPnL','Equity','ReturnPct','DrawdownPct'])
-    d = t.groupby('Date', as_index=False)['PnL Neto USD'].sum().sort_values('Date')
-    d['Equity']     = cap0 + d['PnL Neto USD'].cumsum()
-    d['ReturnPct']  = d['PnL Neto USD'] / cap0 * 100.0
-    pk = d['Equity'].cummax()
-    d['DrawdownPct'] = (d['Equity'] - pk) / pk * 100.0
-    return d.rename(columns={'PnL Neto USD':'DailyPnL'})
-
-
-def calc_metrics(t, e, cap0):
-    if len(t) == 0:
-        return {}
-
-    pk = np.maximum.accumulate(e)
-    mdd = ((e - pk) / pk * 100).min()
-
-    w  = t[t['Resultado'] == 'WIN']
-    lo = t[t['Resultado'] == 'LOSS']
-    be = t[t['Resultado'] == 'BE']
-
-    ret = (e[-1] - e[0]) / e[0] * 100
-    wr  = len(w) / len(t) * 100
-
-    gp = w['PnL Neto USD'].sum() if len(w) > 0 else 0
-    gl = abs(lo['PnL Neto USD'].sum()) if len(lo) > 0 else 0.001
-    pf = gp / gl
-
-    days = t['Date'].nunique()
-    aw = w['PnL Neto USD'].mean() if len(w) > 0 else 0
-    al = lo['PnL Neto USD'].mean() if len(lo) > 0 else 0
-    exp = t['PnL Neto USD'].mean()
-
-    monthly = t.groupby('Mes')['PnL Neto USD'].sum()
-    mret = monthly / cap0 * 100
-
-    mret_std = mret.std(ddof=1)
-    sharpe = (mret.mean() / mret_std * np.sqrt(12)
-              if len(mret) > 1 and pd.notna(mret_std) and mret_std > 0 else np.nan)
-
-    downside = np.minimum(mret, 0.0)
-    downside_dev = np.sqrt(np.mean(downside ** 2)) if len(mret) > 0 else np.nan
-    sortino = (mret.mean() / downside_dev * np.sqrt(12)
-               if pd.notna(downside_dev) and downside_dev > 0 else np.nan)
-
-    ann = (((e[-1] / e[0]) ** (252 / days) - 1) * 100
-           if days > 0 and e[0] > 0 and e[-1] > 0 else 0)
-    calmar = ann / abs(mdd) if mdd != 0 else 0
-
-    daily_pnl = t.groupby('Date')['PnL Neto USD'].sum().sort_index()
-    t_p = scipy_stats.ttest_1samp(daily_pnl, 0).pvalue if len(daily_pnl) > 1 else 1.0
-    sign_p = sign_test_pvalue(daily_pnl.values)
-    ci_lo, ci_hi = bootstrap_mean_ci(daily_pnl.values)
-
-    mc_dd_p5, mc_dd_p50, mc_dd_p95, mc_final = monte_carlo_dd(t['PnL Neto USD'].values, cap0)
-
-    worst_day = float(daily_pnl.min()) if len(daily_pnl) > 0 else 0.0
-    best_day  = float(daily_pnl.max()) if len(daily_pnl) > 0 else 0.0
-
-    ms = 0
-    cur = 0
-    for r in t['Resultado']:
-        if r == 'LOSS':
-            cur += 1
-            ms = max(ms, cur)
-        else:
-            cur = 0
-
-    return {
-        'n': len(t), 'wr': round(wr, 1), 'ret': round(ret, 2), 'final': round(e[-1], 2),
-        'mdd': round(mdd, 2), 'pf': round(pf, 2),
-        'sharpe': round(float(sharpe), 3) if pd.notna(sharpe) else np.nan,
-        'sortino': round(float(sortino), 3) if pd.notna(sortino) else np.nan,
-        'calmar': round(calmar, 3), 'aw': round(aw, 2), 'al': round(al, 2),
-        'exp': round(exp, 4), 'p_val': round(float(t_p), 6), 'sign_p': round(float(sign_p), 6),
-        'boot_lo': round(float(ci_lo), 4), 'boot_hi': round(float(ci_hi), 4),
-        'mc_dd_p5': round(float(mc_dd_p5), 2), 'mc_dd_p50': round(float(mc_dd_p50), 2),
-        'mc_dd_p95': round(float(mc_dd_p95), 2), 'mc_final_p50': round(float(mc_final), 2),
-        'ms': ms, 'days': days,
-        'avg_day': round(ret / days, 3) if days > 0 else 0,
-        'worst_day_usd': round(worst_day, 2),
-        'best_day_usd': round(best_day, 2),
-        'total_comm': round(t['Comisión USD'].sum(), 2),
-    }
+from backtest_stats import (
+    bootstrap_mean_ci, sign_test_pvalue, monte_carlo_dd,
+    daily_equity, calc_metrics,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════

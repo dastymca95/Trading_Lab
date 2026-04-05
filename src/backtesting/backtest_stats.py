@@ -158,6 +158,9 @@ def calc_metrics(t, e, cap0):
         t['PnL Neto USD'].values, cap0
     )
 
+    worst_day_usd = round(float(daily_pnl.min()), 2) if len(daily_pnl) > 0 else 0.0
+    best_day_usd  = round(float(daily_pnl.max()), 2) if len(daily_pnl) > 0 else 0.0
+
     ms = 0
     cur = 0
     for r in t['Resultado']:
@@ -183,6 +186,8 @@ def calc_metrics(t, e, cap0):
         'mc_dd_p95': round(float(mc_dd_p95), 2),
         'mc_final_p50': round(float(mc_final), 2),
         'ms': ms, 'days': days, 'avg_day': round(ret / days, 3) if days > 0 else 0,
+        'worst_day_usd': worst_day_usd,
+        'best_day_usd': best_day_usd,
         'total_comm': round(t['Comisión USD'].sum(), 2),
         'total_raw': round(t['PnL Bruto USD'].sum(), 2),
         'monthly': monthly, 'monthly_ret': mret, 'equity': e,
