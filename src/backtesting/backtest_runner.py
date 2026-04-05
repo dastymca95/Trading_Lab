@@ -111,6 +111,33 @@ def calculate_position_size(cap, sl_dist, ep, p):
     return lots
 
 
+def simulate_trade_lifecycle(si, H, L, C, sl, ep, sp, direction, av, p):
+    ei  = min(si + 1 + MAX_BARS, len(H))
+    fH  = H[si+1:ei]; fL = L[si+1:ei]; fC = C[si+1:ei]
+    ib  = direction == 1
+    csl = sl; bp = ep; ber = False
+    be_p = (ep + sp) if ib else (ep - sp)
+    xp  = ep; bars = MAX_BARS
+
+    for i in range(len(fH)):
+        h2, l2 = fH[i], fL[i]
+        if np.isnan(h2): break
+        if ib  and l2 <= csl: xp = csl; bars = i+1; break
+        if not ib and h2 >= csl: xp = csl; bars = i+1; break
+        if ib:  bp = max(bp, h2); ber = ber or h2 >= be_p
+        else:   bp = min(bp, l2); ber = ber or l2 <= be_p
+        if not ber: continue
+        ns  = (bp - av*p['trail_mult']) if ib else (bp + av*p['trail_mult'])
+        ns  = max(ns, be_p) if ib else min(ns, be_p)
+        csl = max(csl, ns) if ib else min(csl, ns)
+    else:
+        li = len(fC) - 1
+        while li >= 0 and np.isnan(fC[li]): li -= 1
+        xp = fC[li] if li >= 0 else ep; bars = len(fH)
+
+    return xp, bars
+
+
 def run_backtest(asset, df, lr, vm, p, cap_start,
                  date_start=None, date_end=None, label='FULL'):
     H = df['high'].values
@@ -167,28 +194,7 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
 
         lots = calculate_position_size(cap, sl_dist, ep, p)
 
-        ei  = min(si + 1 + MAX_BARS, len(df))
-        fH  = H[si+1:ei]; fL = L[si+1:ei]; fC = C[si+1:ei]
-        ib  = direction == 1
-        csl = sl; bp = ep; ber = False
-        be_p = (ep + sp) if ib else (ep - sp)
-        xp  = ep; bars = MAX_BARS
-
-        for i in range(len(fH)):
-            h2, l2 = fH[i], fL[i]
-            if np.isnan(h2): break
-            if ib  and l2 <= csl: xp = csl; bars = i+1; break
-            if not ib and h2 >= csl: xp = csl; bars = i+1; break
-            if ib:  bp = max(bp, h2); ber = ber or h2 >= be_p
-            else:   bp = min(bp, l2); ber = ber or l2 <= be_p
-            if not ber: continue
-            ns  = (bp - av*p['trail_mult']) if ib else (bp + av*p['trail_mult'])
-            ns  = max(ns, be_p) if ib else min(ns, be_p)
-            csl = max(csl, ns) if ib else min(csl, ns)
-        else:
-            li = len(fC) - 1
-            while li >= 0 and np.isnan(fC[li]): li -= 1
-            xp = fC[li] if li >= 0 else ep; bars = len(fH)
+        xp, bars = simulate_trade_lifecycle(si, H, L, C, sl, ep, sp, direction, av, p)
 
         raw = (xp-ep)*direction*lots*(p['cs']/max((ep+xp)/2,1) if p['jpy'] else p['cs'])
         spread_cost = sp * lots * p['cs']
