@@ -1,0 +1,46 @@
+
+env_name: demo
+
+mode:
+  live_trading: false
+  paper_trading: false
+  execution_enabled: true
+  shadow_mode: false
+
+mt5:
+  offset_hours: 1
+  account_alias: demo_icmarkets
+  terminal_path: "C:/Program Files/MetaTrader 5/terminal64.exe"
+
+bot:
+  magic: 20260402
+  trailing_check_seconds: 10
+  initial_capital_per_asset: 250.0
+  max_trades_per_day_per_asset: 2
+
+testing:
+  force_test_trade: false
+  force_test_symbol: "US30"
+  force_test_direction: 1
+  force_test_return_after_open: true
+
+parity:
+  enabled: false
+  force_scan: false
+
+execution:
+  deviation: 30
+  allowed_order_types: ["market"]
+  latency_checks_enabled: true
+
+logging:
+  level: "DEBUG"
+  save_trade_journal: true
+  save_market_snapshots: true
+  save_execution_audit: true
+
+paths:
+  state_file: "C:/Users/Dasty/PycharmProjects/Trading_Lab/data/state/london_bot_state.json"
+  audit_file: "C:/Users/Dasty/PycharmProjects/Trading_Lab/reports/execution_audit/slippage_audit.csv"
+  log_dir: "C:/Users/Dasty/PycharmProjects/Trading_Lab/logs/london_bot"
+  parity_file: "C:/Users/Dasty/PycharmProjects/Trading_Lab/reports/london_bot/parity_log.csv"

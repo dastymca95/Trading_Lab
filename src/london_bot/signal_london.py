@@ -1,0 +1,120 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+import numpy as np
+
+from src.london_bot.london_levels import get_signal_context
+from src.shared.risk_utils import calc_lots
+from src.core.signal import Signal
+
+
+def check_signal(
+    symbol: str,
+    asset_params: Dict[str, Any],
+    signal_hour: int,
+    mt5_now: datetime,
+    volume_means: Dict[str, float],
+    initial_capital_per_asset: float,
+) -> Optional[Signal]:
+    """
+    Evalúa si existe señal London Range Breakout para un símbolo dado.
+
+    Asume que los filtros operativos externos ya fueron validados
+    en risk_manager_london.py.
+    """
+    ctx = get_signal_context(
+        symbol=symbol,
+        signal_date=mt5_now.date(),
+        signal_hour=signal_hour,
+        asset_params=asset_params,
+    )
+    if not ctx:
+        return None
+
+    signal_row = ctx["signal_row"]
+
+    entry_price = float(signal_row["close"])
+    atr_value = float(signal_row["atr14"]) if np.isfinite(signal_row["atr14"]) else 0.0
+    candle_range = float(signal_row["high"] - signal_row["low"])
+    tick_volume = float(signal_row["tick_volume"])
+
+    london_high = float(ctx["lh"])
+    london_low = float(ctx["ll"])
+    lrr = float(ctx["lrr"])
+    spread_signal = float(ctx["spread_signal"])
+
+    if atr_value <= 0:
+        return None
+
+    volume_mean = volume_means.get(symbol, 0.0)
+    if volume_mean > 0 and tick_volume < volume_mean:
+        return None
+
+    if not np.isfinite(lrr) or lrr <= asset_params["lrr_min"]:
+        return None
+
+    direction = None
+    signal_type = ""
+
+    if entry_price > london_high:
+        direction = 1
+        signal_type = f"Breakout ALCISTA (London High={london_high:.{asset_params['digits']}f})"
+
+    elif entry_price < london_low:
+        direction = -1
+        signal_type = f"Breakout BAJISTA (London Low={london_low:.{asset_params['digits']}f})"
+
+    elif candle_range > asset_params["atr_mult"] * atr_value:
+        direction = -1 if signal_row["close"] > signal_row["open"] else 1
+        signal_type = (
+            f"Vela grande ({candle_range:.{asset_params['digits']}f} > "
+            f"{asset_params['atr_mult']}xATR)"
+        )
+
+    if direction is None:
+        return None
+
+    if direction == 1:
+        stop_loss = entry_price * (1 - asset_params["sl_pct"])
+        stop_loss = max(stop_loss, london_low)
+    else:
+        stop_loss = entry_price * (1 + asset_params["sl_pct"])
+        stop_loss = min(stop_loss, london_high)
+
+    stop_distance = max(
+        abs(entry_price - stop_loss) + spread_signal,
+        entry_price * 0.0015,
+    )
+
+    if stop_distance < 1e-8:
+        return None
+
+    lots = calc_lots(
+        capital=initial_capital_per_asset,
+        risk_pct=asset_params["risk_pct"],
+        sl_dist=stop_distance,
+        entry=entry_price,
+        p=asset_params,
+    )
+
+    if lots <= 0:
+        return None
+
+    return Signal(
+        symbol=symbol,
+        direction=direction,
+        stype=signal_type,
+        ep=entry_price,
+        sl=stop_loss,
+        sl_dist=stop_distance,
+        lots=lots,
+        atr=atr_value,
+        lh=london_high,
+        ll=london_low,
+        lrr=lrr,
+        spread_signal=spread_signal,
+        signal_time=signal_row["time"],
+        signal_tick_volume=tick_volume,
+    )

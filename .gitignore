@@ -7,6 +7,7 @@ env/
 *.log
 
 # ===== Data / Models =====
+data/
 *.pkl
 *.parquet
 *.csv
@@ -19,3 +20,10 @@ Thumbs.db
 # ===== IDE =====
 .idea/
 .vscode/
+
+# ===== Python cache =====
+__pycache__/
+*.pyc
+
+# ===== Claude Code =====
+.claude/
