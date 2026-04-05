@@ -45,60 +45,21 @@ except Exception:
 # CONFIG
 # ═══════════════════════════════════════════════════════════════════════
 
-SEED = 42
-np.random.seed(SEED)
+from backtest_config import (
+    INITIAL_PER_ASSET, USE_LIVE_SPECS,
+    AUTO_ENABLE_SYMBOL, COMMISSION_LOOKBACK_DAYS,
+    TEST_START, MAX_BARS, ROLLING_SHARPE_WIN,
+    MONTE_CARLO_RUNS, BOOTSTRAP_RUNS, TIMEFRAME_MINUTES,
+    ASSET_PARAMS_BASE, OPTIONAL_PARAMS,
+    COMMISSION_MANUAL_RT,
+)
 
-INITIAL_PER_ASSET  = 250.0
-USE_LIVE_SPECS     = True
-AUTO_ENABLE_SYMBOL = True
-COMMISSION_LOOKBACK_DAYS = 90
-
-TEST_START         = pd.Timestamp('2025-01-01')
-MAX_BARS           = 240
-ROLLING_SHARPE_WIN = 20
-MONTE_CARLO_RUNS   = 2000
-BOOTSTRAP_RUNS     = 2000
-TIMEFRAME_MINUTES  = 2
-
-# Grilla de riesgo: cambia esto y listo
+# Grilla de riesgo: específico del barrido
 RISK_GRID = [
     0.0025, 0.0050, 0.0075, 0.0100, 0.0125,
     0.0150, 0.0175, 0.0200, 0.0250, 0.0300,
     0.0350, 0.0400, 0.0500, 0.0550, 0.0600
 ]
-
-ASSET_PARAMS_BASE = {
-    'XAUUSD': {
-        'sl_pct':0.003, 'trail_mult':1.0,  'risk_pct':0.02, 'lrr_min':1.5,
-        'hours':[15,18], 'dow':[1,2,3,4],   'atr_mult':1.5,
-        'comm':7.00, 'cs':100,    'ml':0.01, 'step':0.01, 'sp':0.30,  'jpy':False, 'digits':2,
-    },
-    'US30': {
-        'sl_pct':0.003, 'trail_mult':3.0,  'risk_pct':0.02, 'lrr_min':1.0,
-        'hours':[15,18], 'dow':[0,1,2,3,4], 'atr_mult':1.5,
-        'comm':0.00, 'cs':1,      'ml':0.1,  'step':0.1,  'sp':3.0,   'jpy':False, 'digits':2,
-    },
-}
-
-OPTIONAL_PARAMS = {
-    'USTEC': {'sl_pct':0.003,'trail_mult':3.0,'risk_pct':0.02,'lrr_min':1.0,
-              'hours':[15,18],'dow':[0,1,2,3,4],'atr_mult':1.5,
-              'comm':0.00,'cs':1,'ml':0.1,'step':0.1,'sp':1.0,'jpy':False,'digits':2},
-    'US500': {'sl_pct':0.003,'trail_mult':3.0,'risk_pct':0.02,'lrr_min':1.0,
-              'hours':[15,18],'dow':[0,1,2,3,4],'atr_mult':1.5,
-              'comm':0.00,'cs':1,'ml':0.1,'step':0.1,'sp':0.5,'jpy':False,'digits':2},
-    'DE40':  {'sl_pct':0.003,'trail_mult':3.0,'risk_pct':0.02,'lrr_min':1.0,
-              'hours':[15,18],'dow':[0,1,2,3,4],'atr_mult':1.5,
-              'comm':0.00,'cs':1,'ml':0.1,'step':0.1,'sp':1.0,'jpy':False,'digits':2},
-}
-
-COMMISSION_MANUAL_RT = {
-    'XAUUSD': 7.00,
-    'US30':   0.00,
-    'USTEC':  0.00,
-    'US500':  0.00,
-    'DE40':   0.00,
-}
 
 
 # ═══════════════════════════════════════════════════════════════════════
