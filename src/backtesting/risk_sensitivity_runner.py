@@ -24,9 +24,7 @@ SALIDA
 """
 
 import os
-import glob
-import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -47,7 +45,6 @@ except Exception:
 
 from backtest_config import (
     INITIAL_PER_ASSET, USE_LIVE_SPECS,
-    AUTO_ENABLE_SYMBOL, COMMISSION_LOOKBACK_DAYS,
     TEST_START, MAX_BARS, ROLLING_SHARPE_WIN,
     MONTE_CARLO_RUNS, BOOTSTRAP_RUNS, TIMEFRAME_MINUTES,
     ASSET_PARAMS_BASE, OPTIONAL_PARAMS,
@@ -66,126 +63,11 @@ RISK_GRID = [
 # MT5 / SPECS
 # ═══════════════════════════════════════════════════════════════════════
 
-def connect_mt5() -> bool:
-    if mt5 is None:
-        print("  ⚠️ MetaTrader5 no está instalado.")
-        return False
-    if not mt5.initialize():
-        print(f"  ❌ Error initialize(): {mt5.last_error()}")
-        return False
-    info = mt5.account_info()
-    if info is None:
-        print("  ❌ No se pudo leer account_info()")
-        return False
-    print(f"  ✓ Conectado MT5 | Cuenta: {info.login} | Broker: {info.company}")
-    return True
-
-
-def safe_symbol(symbol: str) -> bool:
-    info = mt5.symbol_info(symbol)
-    if info is None:
-        print(f"  ⚠️ {symbol}: no existe en este broker")
-        return False
-    if info.visible:
-        return True
-    if AUTO_ENABLE_SYMBOL and mt5.symbol_select(symbol, True):
-        print(f"  ✓ {symbol}: activado en Market Watch")
-        return True
-    print(f"  ⚠️ {symbol}: no visible y no se pudo activar")
-    return False
-
-
-def _comm_from_history_rt(symbol: str):
-    try:
-        deals = mt5.history_deals_get(
-            datetime.now() - timedelta(days=COMMISSION_LOOKBACK_DAYS),
-            datetime.now()
-        )
-        if deals is None or len(deals) == 0:
-            return None
-        hits = []
-        for d in deals:
-            if getattr(d, 'symbol', None) != symbol:
-                continue
-            comm = getattr(d, 'commission', 0)
-            vol = getattr(d, 'volume', 0)
-            if comm in (None, 0) or vol in (None, 0):
-                continue
-            hits.append(abs(comm) / vol)
-        if not hits:
-            return None
-        return round(float(sum(hits) / len(hits)) * 2, 4)
-    except Exception:
-        return None
-
-
-def _comm_from_order_check_rt(symbol: str, volume_min: float):
-    try:
-        tick = mt5.symbol_info_tick(symbol)
-        if tick is None:
-            return None
-        check = mt5.order_check({
-            "action":       mt5.TRADE_ACTION_DEAL,
-            "symbol":       symbol,
-            "volume":       volume_min,
-            "type":         mt5.ORDER_TYPE_BUY,
-            "price":        tick.ask,
-            "deviation":    50,
-            "magic":        0,
-            "comment":      "spec_check",
-            "type_time":    mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        })
-        if check is None:
-            return None
-        commission = getattr(check, 'commission', None)
-        if commission in (None, 0):
-            return None
-        side_per_lot = abs(float(commission)) / max(volume_min, 1e-8)
-        return round(side_per_lot * 2, 4)
-    except Exception:
-        return None
-
-
-def get_live_commission_rt(symbol: str, volume_min: float, fallback_rt: float):
-    c = _comm_from_history_rt(symbol)
-    if c is not None:
-        return c, "history"
-    c = _comm_from_order_check_rt(symbol, volume_min)
-    if c is not None:
-        return c, "order_check"
-    return float(fallback_rt), "fallback"
-
-
-def load_broker_specs_json(data_dir):
-    json_files = sorted(glob.glob(os.path.join(data_dir, 'especificaciones_*.json')), reverse=True)
-    if json_files:
-        print(f"  ✓ Specs JSON: {os.path.basename(json_files[0])}")
-        with open(json_files[0], 'r', encoding='utf-8') as f:
-            return json.load(f)
-    print("  ℹ️ Sin JSON de specs — usando parámetros base")
-    return None
-
-
-def apply_json_specs(specs, base_params):
-    if specs is None:
-        return {k: v.copy() for k, v in base_params.items()}
-    updated = {}
-    for asset, p in base_params.items():
-        sp = specs.get(asset)
-        if sp is None:
-            updated[asset] = p.copy()
-            continue
-        q = p.copy()
-        q['comm']   = float(sp.get('commission_round_trip', p['comm']) or p['comm'])
-        q['cs']     = int(sp.get('contract_size', p['cs']) or p['cs'])
-        q['ml']     = float(sp.get('volume_min', p['ml']) or p['ml'])
-        q['step']   = float(sp.get('volume_step', p.get('step', p['ml'])) or p.get('step', p['ml']))
-        q['digits'] = int(sp.get('digits', p['digits']) or p['digits'])
-        q['jpy']    = bool(sp.get('is_jpy', p['jpy']))
-        q['comm_source'] = 'json'
-        updated[asset] = q
-    return updated
+from backtest_specs import (
+    connect_mt5, safe_symbol,
+    _comm_from_history_rt, _comm_from_order_check_rt, get_live_commission_rt,
+    load_broker_specs_json, apply_json_specs,
+)
 
 
 def apply_risk(params: dict, risk_pct: float) -> dict:
