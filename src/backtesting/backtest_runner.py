@@ -111,6 +111,14 @@ def calculate_position_size(cap, sl_dist, ep, p):
     return lots
 
 
+def calculate_trade_pnl(xp, ep, direction, lots, sp, p):
+    raw = (xp-ep)*direction*lots*(p['cs']/max((ep+xp)/2,1) if p['jpy'] else p['cs'])
+    spread_cost = sp * lots * p['cs']
+    net = raw - lots * p['comm'] - spread_cost
+    result = 'WIN' if net > 0.01 else ('LOSS' if net < -0.01 else 'BE')
+    return raw, net, result
+
+
 def simulate_trade_lifecycle(si, H, L, C, sl, ep, sp, direction, av, p):
     ei  = min(si + 1 + MAX_BARS, len(H))
     fH  = H[si+1:ei]; fL = L[si+1:ei]; fC = C[si+1:ei]
@@ -196,10 +204,7 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
 
         xp, bars = simulate_trade_lifecycle(si, H, L, C, sl, ep, sp, direction, av, p)
 
-        raw = (xp-ep)*direction*lots*(p['cs']/max((ep+xp)/2,1) if p['jpy'] else p['cs'])
-        spread_cost = sp * lots * p['cs']
-        net = raw - lots * p['comm'] - spread_cost
-        result = 'WIN' if net > 0.01 else ('LOSS' if net < -0.01 else 'BE')
+        raw, net, result = calculate_trade_pnl(xp, ep, direction, lots, sp, p)
         cap = max(cap + net, 0.01)
         equity.append(cap)
         ops[d] = ops.get(d, 0) + 1
