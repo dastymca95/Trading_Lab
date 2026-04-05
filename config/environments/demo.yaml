@@ -40,7 +40,7 @@ logging:
   save_execution_audit: true
 
 paths:
-  state_file: "C:/Users/Dasty/PycharmProjects/Trading_Lab/data/state/london_bot_state.json"
-  audit_file: "C:/Users/Dasty/PycharmProjects/Trading_Lab/reports/execution_audit/slippage_audit.csv"
-  log_dir: "C:/Users/Dasty/PycharmProjects/Trading_Lab/logs/london_bot"
-  parity_file: "C:/Users/Dasty/PycharmProjects/Trading_Lab/reports/london_bot/parity_log.csv"
+  state_file: "data/state/london_bot_state.json"
+  audit_file: "reports/execution_audit/slippage_audit.csv"
+  log_dir: "logs/london_bot"
+  parity_file: "reports/london_bot/parity_log.csv"
