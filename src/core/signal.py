@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
@@ -25,11 +25,3 @@ class Signal:
     signal_tick_volume: float               = 0.0
     signal_time:        Optional[datetime]  = None
 
-    # ── Compatibilidad temporal con código dict-based ─────────────────────
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, d: dict) -> Signal:
-        known = cls.__dataclass_fields__
-        return cls(**{k: v for k, v in d.items() if k in known})
