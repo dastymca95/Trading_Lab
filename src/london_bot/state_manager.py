@@ -5,14 +5,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
+from src.core.position import PositionState
 
-def _serialize_position(position: Dict[str, Any]) -> Dict[str, Any]:
+
+def _serialize_position(position: PositionState) -> Dict[str, Any]:
     """
     Convierte una posición a un formato serializable en JSON.
     """
     serialized: Dict[str, Any] = {}
 
-    for key, value in position.items():
+    for key, value in position.to_dict().items():
         if isinstance(value, datetime):
             serialized[key] = {"__datetime__": value.isoformat()}
         elif isinstance(value, (int, float, bool, str)) or value is None:
@@ -23,7 +25,7 @@ def _serialize_position(position: Dict[str, Any]) -> Dict[str, Any]:
     return serialized
 
 
-def _deserialize_position(position: Dict[str, Any]) -> Dict[str, Any]:
+def _deserialize_position(position: Dict[str, Any]) -> PositionState:
     """
     Reconstruye una posición desde el JSON guardado.
     """
@@ -73,11 +75,11 @@ def _deserialize_position(position: Dict[str, Any]) -> Dict[str, Any]:
         else:
             deserialized[key] = value
 
-    return deserialized
+    return PositionState.from_dict(deserialized)
 
 
 def save_state(
-    open_positions: Dict[str, Dict[str, Any]],
+    open_positions: Dict[str, PositionState],
     trades_today: Dict[str, int],
     state_file: str,
     logger,
@@ -109,7 +111,7 @@ def save_state(
         logger.error(f"Error guardando estado: {e}")
 
 
-def load_state(state_file: str, logger) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, int]]:
+def load_state(state_file: str, logger) -> Tuple[Dict[str, PositionState], Dict[str, int]]:
     """
     Carga el estado del bot desde disco.
     """
