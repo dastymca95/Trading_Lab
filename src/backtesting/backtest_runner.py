@@ -44,59 +44,14 @@ except Exception:
 # CONFIGURACIÓN
 # ═══════════════════════════════════════════════════════════════════════
 
-SEED = 42
-np.random.seed(SEED)
-
-INITIAL_PER_ASSET  = 250.0
-GLOBAL_RISK_PCT    = 0.02      # ← CAMBIA SOLO ESTA LÍNEA
-USE_LIVE_SPECS     = True      # ← True = MT5 live specs | False = JSON/base
-AUTO_ENABLE_SYMBOL = True
-COMMISSION_LOOKBACK_DAYS = 90
-
-TRAIN_END          = pd.Timestamp('2025-01-01')
-TEST_START         = pd.Timestamp('2025-01-01')
-MAX_BARS           = 240
-ROLLING_SHARPE_WIN = 20
-MONTE_CARLO_RUNS   = 2000
-BOOTSTRAP_RUNS     = 2000
-TIMEFRAME_MINUTES  = 2
-
-# Parámetros estratégicos base
-ASSET_PARAMS_BASE = {
-    'XAUUSD': {
-        'sl_pct':0.003, 'trail_mult':1.0,  'risk_pct':GLOBAL_RISK_PCT, 'lrr_min':1.5,
-        'hours':[15,18], 'dow':[1,2,3,4],   'atr_mult':1.5,
-        'comm':7.00, 'cs':100,    'ml':0.01, 'step':0.01, 'sp':0.30,  'jpy':False, 'digits':2,
-    },
-    'US30': {
-        'sl_pct':0.003, 'trail_mult':3.0,  'risk_pct':GLOBAL_RISK_PCT, 'lrr_min':1.0,
-        'hours':[15,18], 'dow':[0,1,2,3,4], 'atr_mult':1.5,
-        'comm':0.00, 'cs':1,      'ml':0.1,  'step':0.1,  'sp':3.0,   'jpy':False, 'digits':2,
-    },
-}
-
-OPTIONAL_ASSETS = ['USTEC', 'US500', 'DE40']
-
-OPTIONAL_PARAMS = {
-    'USTEC': {'sl_pct':0.003,'trail_mult':3.0,'risk_pct':GLOBAL_RISK_PCT,'lrr_min':1.0,
-              'hours':[15,18],'dow':[0,1,2,3,4],'atr_mult':1.5,
-              'comm':0.00,'cs':1,'ml':0.1,'step':0.1,'sp':1.0,'jpy':False,'digits':2},
-    'US500': {'sl_pct':0.003,'trail_mult':3.0,'risk_pct':GLOBAL_RISK_PCT,'lrr_min':1.0,
-              'hours':[15,18],'dow':[0,1,2,3,4],'atr_mult':1.5,
-              'comm':0.00,'cs':1,'ml':0.1,'step':0.1,'sp':0.5,'jpy':False,'digits':2},
-    'DE40':  {'sl_pct':0.003,'trail_mult':3.0,'risk_pct':GLOBAL_RISK_PCT,'lrr_min':1.0,
-              'hours':[15,18],'dow':[0,1,2,3,4],'atr_mult':1.5,
-              'comm':0.00,'cs':1,'ml':0.1,'step':0.1,'sp':1.0,'jpy':False,'digits':2},
-}
-
-# Fallback manual tipo extractor
-COMMISSION_MANUAL_RT = {
-    'XAUUSD': 7.00,
-    'US30':   0.00,
-    'USTEC':  0.00,
-    'US500':  0.00,
-    'DE40':   0.00,
-}
+from backtest_config import (
+    SEED, INITIAL_PER_ASSET, GLOBAL_RISK_PCT, USE_LIVE_SPECS,
+    AUTO_ENABLE_SYMBOL, COMMISSION_LOOKBACK_DAYS,
+    TRAIN_END, TEST_START, MAX_BARS, ROLLING_SHARPE_WIN,
+    MONTE_CARLO_RUNS, BOOTSTRAP_RUNS, TIMEFRAME_MINUTES,
+    ASSET_PARAMS_BASE, OPTIONAL_ASSETS, OPTIONAL_PARAMS,
+    COMMISSION_MANUAL_RT,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════
