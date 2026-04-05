@@ -23,6 +23,10 @@ testing:
   force_test_direction: 1
   force_test_return_after_open: true
 
+parity:
+  enabled: false
+  force_scan: false
+
 execution:
   deviation: 20
   allowed_order_types: ["market"]

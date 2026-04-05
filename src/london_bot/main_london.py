@@ -37,8 +37,9 @@ from src.london_bot.risk_manager_london import (
 from src.london_bot.pnl_tracker_london import log_pnl_summary
 from src.london_bot.manual_test import force_demo_trade
 from src.london_bot.parity_logger import ensure_parity_csv, write_parity_row
-
-FORCE_PARITY_SCAN = False
+from src.core.execution import ExecutionDecision
+from src.core.position import PositionState
+from src.core.signal import Signal
 
 
 def main() -> None:
@@ -59,9 +60,10 @@ def main() -> None:
         audit_columns=config["audit"]["columns"],
         logger=log,
     )
-    ensure_parity_csv(
-        parity_file=config["paths"]["parity_file"],
-    )
+    if config["parity"]["enabled"]:
+        ensure_parity_csv(
+            parity_file=config["paths"]["parity_file"],
+        )
 
     if not connect_mt5(
         logger=log,
@@ -230,9 +232,9 @@ def main() -> None:
 
             # Escaneo de señales
 
-            if FORCE_PARITY_SCAN or is_signal_scan_window(mt5_now, signal_hours, scan_minutes):
+            if config["parity"]["force_scan"] or is_signal_scan_window(mt5_now, signal_hours, scan_minutes):
                 for symbol, params in asset_params.items():
-                    if not FORCE_PARITY_SCAN and not should_run_for_asset(current_hour, params):
+                    if not config["parity"]["force_scan"] and not should_run_for_asset(current_hour, params):
                         continue
 
                     key = build_signal_key(symbol, mt5_now, current_hour)
@@ -251,10 +253,10 @@ def main() -> None:
                         f"symbol={symbol}"
                     )
 
-                    if FORCE_PARITY_SCAN:
-                        can_eval, eval_reason = True, "forced_parity_scan"
+                    if config["parity"]["force_scan"]:
+                        eval_decision = ExecutionDecision(allowed=True, reason="forced_parity_scan")
                     else:
-                        can_eval, eval_reason = can_evaluate_signal(
+                        eval_decision = can_evaluate_signal(
                             symbol=symbol,
                             signal_hour=current_hour,
                             mt5_now=mt5_now,
@@ -264,22 +266,23 @@ def main() -> None:
                             open_positions=open_positions,
                         )
 
-                    if not can_eval:
-                        log.info(f"{symbol}: evaluación omitida | reason={eval_reason}")
+                    if not eval_decision.allowed:
+                        log.info(f"{symbol}: evaluación omitida | reason={eval_decision.reason}")
 
-                        write_parity_row(
-                            parity_file=config["paths"]["parity_file"],
-                            bot_version="modular",
-                            symbol=symbol,
-                            signal_hour=current_hour,
-                            mt5_time=mt5_now,
-                            can_eval=False,
-                            eval_reason=eval_reason,
-                            signal_found=False,
-                            signal_payload=None,
-                            exec_allowed=False,
-                            exec_reason="not_applicable",
-                        )
+                        if config["parity"]["enabled"]:
+                            write_parity_row(
+                                parity_file=config["paths"]["parity_file"],
+                                bot_version="modular",
+                                symbol=symbol,
+                                signal_hour=current_hour,
+                                mt5_time=mt5_now,
+                                can_eval=eval_decision.allowed,
+                                eval_reason=eval_decision.reason,
+                                signal_found=False,
+                                signal_payload=None,
+                                exec_allowed=False,
+                                exec_reason="not_applicable",
+                            )
 
                         last_signal_check[key] = True
                         continue
@@ -295,53 +298,54 @@ def main() -> None:
 
                     if sig:
                         log.info(
-                            f"⚡ {sig['stype']} | "
-                            f"lots={sig['lots']} | "
-                            f"sl={sig['sl']:.{params['digits']}f} | "
-                            f"lrr={sig['lrr']:.2f} | "
-                            f"spread_signal={sig['spread_signal']:.{params['digits']}f} | "
-                            f"tv={sig['signal_tick_volume']:.1f} vs "
+                            f"⚡ {sig.stype} | "
+                            f"lots={sig.lots} | "
+                            f"sl={sig.sl:.{params['digits']}f} | "
+                            f"lrr={sig.lrr:.2f} | "
+                            f"spread_signal={sig.spread_signal:.{params['digits']}f} | "
+                            f"tv={sig.signal_tick_volume:.1f} vs "
                             f"vm={volume_means.get(symbol, 0.0):.1f}"
                         )
 
-                        can_exec, exec_reason = can_execute_trade(
+                        exec_decision = can_execute_trade(
                             config=config,
                             symbol=symbol,
                             logger=log,
                         )
-                        write_parity_row(
-                            parity_file=config["paths"]["parity_file"],
-                            bot_version="modular",
-                            symbol=symbol,
-                            signal_hour=current_hour,
-                            mt5_time=mt5_now,
-                            can_eval=True,
-                            eval_reason=eval_reason,
-                            signal_found=True,
-                            signal_payload=sig,
-                            exec_allowed=can_exec,
-                            exec_reason=exec_reason,
-                        )
+                        if config["parity"]["enabled"]:
+                            write_parity_row(
+                                parity_file=config["paths"]["parity_file"],
+                                bot_version="modular",
+                                symbol=symbol,
+                                signal_hour=current_hour,
+                                mt5_time=mt5_now,
+                                can_eval=True,
+                                eval_reason=eval_decision.reason,
+                                signal_found=True,
+                                signal_payload=sig.to_dict(),
+                                exec_allowed=exec_decision.allowed,
+                                exec_reason=exec_decision.reason,
+                            )
 
-                        if not can_exec:
-                            log.info(f"{symbol}: ejecución omitida | reason={exec_reason}")
+                        if not exec_decision.allowed:
+                            log.info(f"{symbol}: ejecución omitida | reason={exec_decision.reason}")
                         else:
                             pos = open_position(
-                                symbol=sig["symbol"],
-                                direction=sig["direction"],
-                                lots=sig["lots"],
-                                sl=sig["sl"],
+                                symbol=sig.symbol,
+                                direction=sig.direction,
+                                lots=sig.lots,
+                                sl=sig.sl,
                                 asset_params=params,
-                                signal_price=sig["ep"],
-                                spread_signal=sig["spread_signal"],
-                                signal_type=sig["stype"],
+                                signal_price=sig.ep,
+                                spread_signal=sig.spread_signal,
+                                signal_type=sig.stype,
                                 bot_magic=config["bot"]["magic"],
                                 deviation=config["execution"]["deviation"],
                                 logger=log,
                             )
 
                             if pos:
-                                pos["atr"] = sig["atr"]
+                                pos.atr = sig.atr
                                 open_positions[symbol] = pos
                                 trades_today[symbol] = trades_today.get(symbol, 0) + 1
 
@@ -357,21 +361,20 @@ def main() -> None:
 
                         log.info("— Sin señal")
 
-                        write_parity_row(
-
-                            parity_file=config["paths"]["parity_file"],
-                            bot_version="modular",
-                            symbol=symbol,
-                            signal_hour=current_hour,
-                            mt5_time=mt5_now,
-                            can_eval=True,
-                            eval_reason=eval_reason,
-                            signal_found=False,
-                            signal_payload=None,
-                            exec_allowed=False,
-                            exec_reason="no_signal",
-
-                        )
+                        if config["parity"]["enabled"]:
+                            write_parity_row(
+                                parity_file=config["paths"]["parity_file"],
+                                bot_version="modular",
+                                symbol=symbol,
+                                signal_hour=current_hour,
+                                mt5_time=mt5_now,
+                                can_eval=True,
+                                eval_reason=eval_decision.reason,
+                                signal_found=False,
+                                signal_payload=None,
+                                exec_allowed=False,
+                                exec_reason="no_signal",
+                            )
 
                     last_signal_check[key] = True
 

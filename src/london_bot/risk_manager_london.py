@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict
 
+from src.core.execution import ExecutionDecision
+
 
 def is_trading_day_allowed(mt5_now: datetime, asset_params: Dict[str, Any]) -> bool:
     """
@@ -50,35 +52,35 @@ def can_evaluate_signal(
     trades_today: int,
     max_trades_per_day_per_asset: int,
     open_positions: Dict[str, Dict[str, Any]],
-) -> tuple[bool, str]:
+) -> ExecutionDecision:
     """
     Verifica si tiene sentido evaluar señal para este símbolo en este momento.
     """
     if not is_trading_day_allowed(mt5_now, asset_params):
-        return False, "weekday no permitido"
+        return ExecutionDecision.deny("weekday no permitido")
 
     if not is_signal_hour_allowed(signal_hour, asset_params):
-        return False, "hora no permitida para el activo"
+        return ExecutionDecision.deny("hora no permitida para el activo")
 
     if has_reached_max_trades(trades_today, max_trades_per_day_per_asset):
-        return False, "máximo de trades diarios alcanzado"
+        return ExecutionDecision.deny("máximo de trades diarios alcanzado")
 
     if has_open_position(symbol, open_positions):
-        return False, "ya existe posición abierta en este símbolo"
+        return ExecutionDecision.deny("ya existe posición abierta en este símbolo")
 
-    return True, "ok"
+    return ExecutionDecision.permit()
 
 
 def can_execute_trade(
     config: Dict[str, Any],
     symbol: str,
     logger,
-) -> tuple[bool, str]:
+) -> ExecutionDecision:
     """
     Verifica si el entorno permite ejecutar una orden real.
     """
     if not is_execution_enabled(config):
         logger.info(f"[SHADOW] execution_enabled=False | {symbol}")
-        return False, "execution disabled"
+        return ExecutionDecision.deny("execution disabled")
 
-    return True, "ok"
+    return ExecutionDecision.permit()

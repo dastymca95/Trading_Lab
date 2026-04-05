@@ -7,6 +7,7 @@ import numpy as np
 
 from src.london_bot.london_levels import get_signal_context
 from src.shared.risk_utils import calc_lots
+from src.core.signal import Signal
 
 
 def check_signal(
@@ -16,7 +17,7 @@ def check_signal(
     mt5_now: datetime,
     volume_means: Dict[str, float],
     initial_capital_per_asset: float,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[Signal]:
     """
     Evalúa si existe señal London Range Breakout para un símbolo dado.
 
@@ -101,19 +102,19 @@ def check_signal(
     if lots <= 0:
         return None
 
-    return {
-        "symbol": symbol,
-        "direction": direction,
-        "stype": signal_type,
-        "ep": entry_price,
-        "sl": stop_loss,
-        "sl_dist": stop_distance,
-        "lots": lots,
-        "atr": atr_value,
-        "lh": london_high,
-        "ll": london_low,
-        "lrr": lrr,
-        "spread_signal": spread_signal,
-        "signal_time": signal_row["time"],
-        "signal_tick_volume": tick_volume,
-    }
+    return Signal(
+        symbol=symbol,
+        direction=direction,
+        stype=signal_type,
+        ep=entry_price,
+        sl=stop_loss,
+        sl_dist=stop_distance,
+        lots=lots,
+        atr=atr_value,
+        lh=london_high,
+        ll=london_low,
+        lrr=lrr,
+        spread_signal=spread_signal,
+        signal_time=signal_row["time"],
+        signal_tick_volume=tick_volume,
+    )

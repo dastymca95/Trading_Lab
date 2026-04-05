@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
-
+from src.core.position import PositionState
 from src.shared.mt5_connector import (
     get_positions,
     get_symbol_info,
@@ -97,7 +96,7 @@ def modify_sl(
     return True
 
 
-def update_trailing(position: Dict[str, Any], logger) -> str:
+def update_trailing(position: PositionState, logger) -> str:
     """
     Gestiona trailing stop y break-even de una posición abierta.
 
@@ -106,11 +105,11 @@ def update_trailing(position: Dict[str, Any], logger) -> str:
         - "stopped"  -> posición ya no existe en MT5 (cerrada)
         - "error"    -> no se pudo procesar tick
     """
-    symbol = position["symbol"]
-    direction = position["direction"]
-    ticket = position["ticket"]
-    atr = position["atr"]
-    digits = position["digits"]
+    symbol = position.symbol
+    direction = position.direction
+    ticket = position.ticket
+    atr = position.atr
+    digits = position.digits
 
     tick = get_tick(symbol)
     if tick is None:
@@ -125,29 +124,29 @@ def update_trailing(position: Dict[str, Any], logger) -> str:
     current_sl = float(positions[0].sl)
 
     if direction == 1:
-        position["best_price"] = max(position["best_price"], current_price)
+        position.best_price = max(position.best_price, current_price)
     else:
-        position["best_price"] = min(position["best_price"], current_price)
+        position.best_price = min(position.best_price, current_price)
 
-    be_level = position["be_level"]
+    be_level = position.be_level
 
-    position["breakeven_hit"] = position["breakeven_hit"] or (
-        position["best_price"] >= be_level if direction == 1
-        else position["best_price"] <= be_level
+    position.breakeven_hit = position.breakeven_hit or (
+        position.best_price >= be_level if direction == 1
+        else position.best_price <= be_level
     )
 
-    if not position["breakeven_hit"]:
+    if not position.breakeven_hit:
         return "ok"
 
     if direction == 1:
         new_sl = max(
-            position["best_price"] - atr * position["trail_mult"],
+            position.best_price - atr * position.trail_mult,
             be_level,
             current_sl,
         )
     else:
         new_sl = min(
-            position["best_price"] + atr * position["trail_mult"],
+            position.best_price + atr * position.trail_mult,
             be_level,
             current_sl,
         )
@@ -164,6 +163,6 @@ def update_trailing(position: Dict[str, Any], logger) -> str:
             logger=logger,
         )
         if modified:
-            position["sl"] = new_sl
+            position.sl = new_sl
 
     return "ok"

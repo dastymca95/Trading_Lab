@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import MetaTrader5 as mt5
 
+from src.core.position import PositionState
 from src.shared.mt5_connector import (
     get_positions,
     get_spread_points,
@@ -65,7 +66,7 @@ def open_position(
     bot_magic: int,
     deviation: int,
     logger,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[PositionState]:
     """
     Envía una orden market BUY/SELL y devuelve el objeto posición si se ejecuta.
     """
@@ -159,31 +160,29 @@ def open_position(
                 f"{signal_type}"
             )
 
-            return {
-                "ticket": real_ticket,
-                "symbol": symbol,
-                "direction": int(direction),
-                "lots": float(lots),
-                "real_entry_price": float(real_price),
-                "signal_price": float(signal_price),
-                "backtest_price": float(signal_price),
-                "slippage": float(slippage),
-                "spread": float(spread_entry),
-                "spread_signal": float(spread_signal),
-                "exec_ms": int(exec_ms),
-                "sl": float(sl),
-                "atr": 0.0,
-                "trail_mult": float(asset_params["trail_mult"]),
-                "be_level": float(be_level),
-                "best_price": float(real_price),
-                "breakeven_hit": False,
-                "open_time": datetime.now(),
-                "digits": int(asset_params["digits"]),
-                "cs": int(asset_params["cs"]),
-                "jpy": bool(asset_params["jpy"]),
-                "comm": float(asset_params["comm"]),
-                "stype": signal_type,
-            }
+            return PositionState(
+                ticket=real_ticket,
+                symbol=symbol,
+                direction=int(direction),
+                lots=float(lots),
+                real_entry_price=float(real_price),
+                signal_price=float(signal_price),
+                sl=float(sl),
+                be_level=float(be_level),
+                best_price=float(real_price),
+                open_time=datetime.now(),
+                digits=int(asset_params["digits"]),
+                cs=int(asset_params["cs"]),
+                jpy=bool(asset_params["jpy"]),
+                comm=float(asset_params["comm"]),
+                trail_mult=float(asset_params["trail_mult"]),
+                stype=signal_type,
+                backtest_price=float(signal_price),
+                slippage=float(slippage),
+                spread=float(spread_entry),
+                spread_signal=float(spread_signal),
+                exec_ms=int(exec_ms),
+            )
 
         if result is None:
             logger.warning(
