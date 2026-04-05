@@ -294,7 +294,9 @@ def main():
     _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     DATA_DIR   = os.path.join(_REPO_ROOT, "data", "backtesting")
     ts         = datetime.now().strftime('%Y%m%d_%H%M')
-    out_path   = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"Backtest_Hibrido_Aligned_{ts}.xlsx")
+    REPORTS_DIR = os.path.join(_REPO_ROOT, "reports", "backtests")
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    out_path    = os.path.join(REPORTS_DIR, f"Backtest_Hibrido_Aligned_{ts}.xlsx")
 
     ASSET_PARAMS = resolve_asset_params(DATA_DIR)
 
