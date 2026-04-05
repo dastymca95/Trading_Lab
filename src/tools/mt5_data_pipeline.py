@@ -59,7 +59,9 @@ MT5_TIMEFRAME    = mt5.TIMEFRAME_M2
 TIMEFRAME_LABEL  = "M2"
 EXPECTED_MINUTES = 2
 
-OUTPUT_DIR         = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT         = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+OUTPUT_DIR         = os.path.join(_REPO_ROOT, "data", "backtesting")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 AUTO_ENABLE_SYMBOL = True
 
 # Columnas que el backtest necesita — en este orden exacto
