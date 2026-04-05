@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple
 import pandas as pd
 import MetaTrader5 as mt5
 
+from src.core.position import PositionState
 from src.shared.mt5_connector import get_positions, history_deals_get
 
 
@@ -74,7 +75,7 @@ def find_exit_deals(
 
 
 def audit_closed_position(
-    position: Dict[str, Any],
+    position: PositionState,
     exit_reason: str,
     audit_file: str,
     audit_columns: List[str],
@@ -87,10 +88,10 @@ def audit_closed_position(
     - PnL aproximado tipo backtest
     - slippage registrado en la entrada
     """
-    symbol = position["symbol"]
-    ticket = position["ticket"]
-    direction = position["direction"]
-    lots = position["lots"]
+    symbol = position.symbol
+    ticket = position.ticket
+    direction = position.direction
+    lots = position.lots
 
     try:
         exit_deals = find_exit_deals(ticket=ticket, bot_magic=bot_magic)
@@ -104,16 +105,16 @@ def audit_closed_position(
         pnl_real = float(sum(getattr(d, "profit", 0.0) for d in exit_deals))
         close_price = float(exit_deals[-1].price)
 
-        backtest_entry_price = float(position["signal_price"])
-        spread_signal = position.get("spread_signal", position.get("spread", 0.0))
+        backtest_entry_price = float(position.signal_price)
+        spread_signal = position.spread_signal
 
-        if position["jpy"]:
+        if position.jpy:
             avg_price = (backtest_entry_price + close_price) / 2
             raw_bt = (
                 (close_price - backtest_entry_price)
                 * direction
                 * lots
-                * position["cs"]
+                * position.cs
                 / max(avg_price, 1)
             )
         else:
@@ -121,13 +122,13 @@ def audit_closed_position(
                 (close_price - backtest_entry_price)
                 * direction
                 * lots
-                * position["cs"]
+                * position.cs
             )
 
         pnl_backtest_approx = (
             raw_bt
-            - lots * position["comm"]
-            - spread_signal * lots * position["cs"]
+            - lots * position.comm
+            - spread_signal * lots * position.cs
         )
 
         row = {
@@ -135,12 +136,12 @@ def audit_closed_position(
             "asset": symbol,
             "direction": "BUY" if direction == 1 else "SELL",
             "lots": lots,
-            "signal_price": position["signal_price"],
-            "real_entry_price": position["real_entry_price"],
-            "slippage_pts": position["slippage"],
+            "signal_price": position.signal_price,
+            "real_entry_price": position.real_entry_price,
+            "slippage_pts": position.slippage,
             "spread_signal": spread_signal,
-            "spread_at_entry": position["spread"],
-            "execution_ms": position["exec_ms"],
+            "spread_at_entry": position.spread,
+            "execution_ms": position.exec_ms,
             "pnl_real": round(pnl_real, 2),
             "pnl_backtest_approx": round(pnl_backtest_approx, 2),
             "exit_reason": exit_reason,
@@ -166,13 +167,13 @@ def audit_closed_position(
 
 
 def reconcile_with_mt5(
-    open_positions: Dict[str, Dict[str, Any]],
+    open_positions: Dict[str, PositionState],
     trades_today: Dict[str, int],
     audit_file: str,
     audit_columns: List[str],
     bot_magic: int,
     logger,
-) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, int]]:
+) -> Tuple[Dict[str, PositionState], Dict[str, int]]:
     """
     Reconciliación al reiniciar el bot:
     - si la posición sigue viva en MT5, sincroniza el SL
@@ -180,19 +181,19 @@ def reconcile_with_mt5(
     """
     for symbol in list(open_positions.keys()):
         position = open_positions[symbol]
-        ticket = position["ticket"]
+        ticket = position.ticket
 
         mt5_pos = get_positions(ticket=ticket)
 
         if mt5_pos:
             current_sl = float(mt5_pos[0].sl)
 
-            if current_sl != position["sl"]:
+            if current_sl != position.sl:
                 logger.info(
                     f"{symbol}: SL actualizado durante reinicio "
-                    f"{position['sl']} → {current_sl}"
+                    f"{position.sl} → {current_sl}"
                 )
-                position["sl"] = current_sl
+                position.sl = current_sl
 
             logger.info(f"✅ {symbol} ticket={ticket}: activa en MT5")
 
