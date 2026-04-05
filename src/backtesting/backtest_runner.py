@@ -79,6 +79,22 @@ def dynamic_spread(sig_row, p):
     return float(p['sp'])
 
 
+def generate_signal(ep, lh, ll, cr, av, sig_open, p):
+    direction = None
+    stype = ''
+    if not (pd.isna(lh) or pd.isna(ll)):
+        if ep > lh:
+            direction = 1
+            stype = f"Breakout ALCISTA (London High={round(lh, p['digits'])})"
+        elif ep < ll:
+            direction = -1
+            stype = f"Breakout BAJISTA (London Low={round(ll, p['digits'])})"
+    if direction is None and cr > p['atr_mult'] * av:
+        direction = -1 if ep > sig_open else 1
+        stype = f"Vela grande ({round(cr, p['digits'])} > {p['atr_mult']}xATR)"
+    return direction, stype
+
+
 def run_backtest(asset, df, lr, vm, p, cap_start,
                  date_start=None, date_end=None, label='FULL'):
     H = df['high'].values
@@ -123,17 +139,7 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
         if pd.isna(av) or av == 0: continue
         if pd.isna(lrr) or lrr <= p['lrr_min']: continue
 
-        direction = None; stype = ''
-        if not (pd.isna(lh) or pd.isna(ll)):
-            if ep > lh:
-                direction = 1
-                stype = f"Breakout ALCISTA (London High={round(lh, p['digits'])})"
-            elif ep < ll:
-                direction = -1
-                stype = f"Breakout BAJISTA (London Low={round(ll, p['digits'])})"
-        if direction is None and cr > p['atr_mult'] * av:
-            direction = -1 if sig['close'] > sig['open'] else 1
-            stype = f"Vela grande ({round(cr, p['digits'])} > {p['atr_mult']}xATR)"
+        direction, stype = generate_signal(ep, lh, ll, cr, av, sig['open'], p)
         if direction is None: continue
 
         sl = ep*(1-p['sl_pct']) if direction==1 else ep*(1+p['sl_pct'])
