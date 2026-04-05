@@ -95,6 +95,22 @@ def generate_signal(ep, lh, ll, cr, av, sig_open, p):
     return direction, stype
 
 
+def calculate_position_size(cap, sl_dist, ep, p):
+    ppu = p['cs'] / max(ep, 1) if p['jpy'] else p['cs']
+    step = p.get('step', p['ml'])
+
+    lots = (cap * p['risk_pct']) / max(ppu * sl_dist + p['comm'], 1e-8)
+    lots = round(lots / step) * step
+    lots = max(p['ml'], lots)
+
+    lots_max = (cap * 0.20) / max(ppu * sl_dist + p['comm'], 0.001)
+    lots_max = round(lots_max / step) * step
+    lots = max(p['ml'], min(lots, lots_max))
+    lots = round(lots, 4)
+
+    return lots
+
+
 def run_backtest(asset, df, lr, vm, p, cap_start,
                  date_start=None, date_end=None, label='FULL'):
     H = df['high'].values
@@ -149,17 +165,7 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
         sl_dist = max(abs(ep - sl) + sp, ep * 0.0015)
         if sl_dist < 1e-8: continue
 
-        ppu = p['cs'] / max(ep, 1) if p['jpy'] else p['cs']
-        step = p.get('step', p['ml'])
-
-        lots = (cap * p['risk_pct']) / max(ppu * sl_dist + p['comm'], 1e-8)
-        lots = round(lots / step) * step
-        lots = max(p['ml'], lots)
-
-        lots_max = (cap * 0.20) / max(ppu * sl_dist + p['comm'], 0.001)
-        lots_max = round(lots_max / step) * step
-        lots = max(p['ml'], min(lots, lots_max))
-        lots = round(lots, 4)
+        lots = calculate_position_size(cap, sl_dist, ep, p)
 
         ei  = min(si + 1 + MAX_BARS, len(df))
         fH  = H[si+1:ei]; fL = L[si+1:ei]; fC = C[si+1:ei]
