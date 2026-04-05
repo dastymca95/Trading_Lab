@@ -42,12 +42,3 @@ class PositionState:
         known = cls.__dataclass_fields__
         return cls(**{k: v for k, v in d.items() if k in known})
 
-    # Shims para consumidores que aún usan position["key"] y position.get("key")
-    def __getitem__(self, key: str):
-        return getattr(self, key)
-
-    def __setitem__(self, key: str, value) -> None:
-        setattr(self, key, value)
-
-    def get(self, key: str, default=None):
-        return getattr(self, key, default)
