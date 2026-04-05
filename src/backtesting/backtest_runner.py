@@ -291,17 +291,18 @@ def main():
     print("║   BACKTEST HÍBRIDO — v2 ULTRA ALIGNED                   ║")
     print("╚══════════════════════════════════════════════════════════╝\n")
 
-    data_dir = os.path.dirname(os.path.abspath(__file__))
-    ts       = datetime.now().strftime('%Y%m%d_%H%M')
-    out_path = os.path.join(data_dir, f"Backtest_Hibrido_Aligned_{ts}.xlsx")
+    _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    DATA_DIR   = os.path.join(_REPO_ROOT, "data", "backtesting")
+    ts         = datetime.now().strftime('%Y%m%d_%H%M')
+    out_path   = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"Backtest_Hibrido_Aligned_{ts}.xlsx")
 
-    ASSET_PARAMS = resolve_asset_params(data_dir)
+    ASSET_PARAMS = resolve_asset_params(DATA_DIR)
 
     # solo mantener activos con archivo de precios disponible
     final_assets = {}
     for asset, p in ASSET_PARAMS.items():
-        pq = os.path.join(data_dir, f"{asset}_Data.parquet")
-        xl = os.path.join(data_dir, f"{asset}_Data.xlsx")
+        pq = os.path.join(DATA_DIR, f"{asset}_Data.parquet")
+        xl = os.path.join(DATA_DIR, f"{asset}_Data.xlsx")
         if os.path.exists(pq) or os.path.exists(xl):
             final_assets[asset] = p
 
@@ -315,7 +316,7 @@ def main():
     warnings_rows = []
 
     for asset, p in final_assets.items():
-        df, lr, vm, qc = load_price_data(asset, data_dir, p['digits'])
+        df, lr, vm, qc = load_price_data(asset, DATA_DIR, p['digits'])
         if df is not None:
             asset_data[asset] = (df, lr, vm)
             qc_rows.append(qc)
