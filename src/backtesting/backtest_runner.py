@@ -232,6 +232,33 @@ from backtest_stats import (
 from backtest_reporter import HFILL, HFONT, thin, BRD, write_df_sheet
 
 
+def aggregate_portfolio(all_full, all_test, cap0):
+    all_t_full = pd.concat(all_full).sort_values('Fecha Apertura').reset_index(drop=True)
+    all_t_full['#'] = range(1, len(all_t_full)+1)
+    all_t_test = pd.concat(all_test).sort_values('Fecha Apertura').reset_index(drop=True) if all_test else pd.DataFrame()
+
+    cap  = cap0
+    eq = [cap]
+    for pnl in all_t_full['PnL Neto USD'].values:
+        cap = max(cap + pnl, 0.01)
+        eq.append(cap)
+    eq = np.array(eq)
+    pm_full = calc_metrics(all_t_full, eq, cap0)
+
+    if len(all_t_test) > 0:
+        cap = cap0
+        eq_t = [cap]
+        for pnl in all_t_test['PnL Neto USD'].values:
+            cap = max(cap + pnl, 0.01)
+            eq_t.append(cap)
+        eq_t = np.array(eq_t)
+        pm_test = calc_metrics(all_t_test, eq_t, cap0)
+    else:
+        pm_test = {}
+
+    return all_t_full, all_t_test, pm_full, pm_test
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════
@@ -314,29 +341,8 @@ def main():
         return
 
     print("\n4. Calculando portafolio...")
-    all_t_full = pd.concat(all_full).sort_values('Fecha Apertura').reset_index(drop=True)
-    all_t_full['#'] = range(1, len(all_t_full)+1)
-    all_t_test = pd.concat(all_test).sort_values('Fecha Apertura').reset_index(drop=True) if all_test else pd.DataFrame()
-
     cap0 = INITIAL_PER_ASSET * len(results_full)
-    cap  = cap0
-    eq = [cap]
-    for pnl in all_t_full['PnL Neto USD'].values:
-        cap = max(cap + pnl, 0.01)
-        eq.append(cap)
-    eq = np.array(eq)
-    pm_full = calc_metrics(all_t_full, eq, cap0)
-
-    if len(all_t_test) > 0:
-        cap = cap0
-        eq_t = [cap]
-        for pnl in all_t_test['PnL Neto USD'].values:
-            cap = max(cap + pnl, 0.01)
-            eq_t.append(cap)
-        eq_t = np.array(eq_t)
-        pm_test = calc_metrics(all_t_test, eq_t, cap0)
-    else:
-        pm_test = {}
+    all_t_full, all_t_test, pm_full, pm_test = aggregate_portfolio(all_full, all_test, cap0)
 
     print(f"   Portfolio FULL: Ret={pm_full['ret']:+.1f}% | Sharpe={pm_full['sharpe']} | DD={pm_full['mdd']}%")
     if pm_test:
