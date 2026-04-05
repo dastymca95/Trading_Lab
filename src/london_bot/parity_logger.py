@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Optional
 import csv
+
+from src.core.signal import Signal
 
 
 PARITY_COLUMNS = [
@@ -47,7 +49,7 @@ def write_parity_row(
     can_eval: bool,
     eval_reason: str,
     signal_found: bool,
-    signal_payload: Optional[Dict[str, Any]],
+    signal: Optional[Signal],
     exec_allowed: bool,
     exec_reason: str,
 ) -> None:
@@ -63,14 +65,14 @@ def write_parity_row(
         "can_eval": can_eval,
         "eval_reason": eval_reason,
         "signal_found": signal_found,
-        "signal_type": signal_payload["stype"] if signal_payload else "",
-        "direction": signal_payload["direction"] if signal_payload else "",
-        "entry_price": signal_payload["ep"] if signal_payload else "",
-        "stop_loss": signal_payload["sl"] if signal_payload else "",
-        "stop_distance": signal_payload["sl_dist"] if signal_payload else "",
-        "lots": signal_payload["lots"] if signal_payload else "",
-        "lrr": signal_payload["lrr"] if signal_payload else "",
-        "spread_signal": signal_payload["spread_signal"] if signal_payload else "",
+        "signal_type": signal.stype if signal else "",
+        "direction": signal.direction if signal else "",
+        "entry_price": signal.ep if signal else "",
+        "stop_loss": signal.sl if signal else "",
+        "stop_distance": signal.sl_dist if signal else "",
+        "lots": signal.lots if signal else "",
+        "lrr": signal.lrr if signal else "",
+        "spread_signal": signal.spread_signal if signal else "",
         "exec_allowed": exec_allowed,
         "exec_reason": exec_reason,
     }

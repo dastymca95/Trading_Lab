@@ -279,7 +279,7 @@ def main() -> None:
                                 can_eval=eval_decision.allowed,
                                 eval_reason=eval_decision.reason,
                                 signal_found=False,
-                                signal_payload=None,
+                                signal=None,
                                 exec_allowed=False,
                                 exec_reason="not_applicable",
                             )
@@ -322,7 +322,7 @@ def main() -> None:
                                 can_eval=True,
                                 eval_reason=eval_decision.reason,
                                 signal_found=True,
-                                signal_payload=sig.to_dict(),
+                                signal=sig,
                                 exec_allowed=exec_decision.allowed,
                                 exec_reason=exec_decision.reason,
                             )
@@ -371,7 +371,7 @@ def main() -> None:
                                 can_eval=True,
                                 eval_reason=eval_decision.reason,
                                 signal_found=False,
-                                signal_payload=None,
+                                signal=None,
                                 exec_allowed=False,
                                 exec_reason="no_signal",
                             )
