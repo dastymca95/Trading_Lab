@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from datetime import datetime
 from typing import Dict, Any
@@ -44,6 +45,13 @@ from src.core.signal import Signal
 
 def main() -> None:
     config = load_app_config("london_bot")
+
+    # Anchor configured paths to project root — CWD-independent
+    _root = config["project_root"]
+    config["paths"]["state_file"]  = os.path.join(_root, config["paths"]["state_file"])
+    config["paths"]["audit_file"]  = os.path.join(_root, config["paths"]["audit_file"])
+    config["paths"]["log_dir"]     = os.path.join(_root, config["paths"]["log_dir"])
+    config["paths"]["parity_file"] = os.path.join(_root, config["paths"]["parity_file"])
 
     log = setup_logger(
         module_name="london_bot",
