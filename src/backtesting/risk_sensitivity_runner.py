@@ -37,6 +37,10 @@ try:
 except Exception:
     mt5 = None
 
+_REPO_ROOT  = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR    = os.path.join(_REPO_ROOT, "data", "backtesting")
+REPORTS_DIR = os.path.join(_REPO_ROOT, "reports", "risk_analysis")
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # CONFIG
@@ -217,14 +221,14 @@ def main():
     print("║   RISK SENSITIVITY RUNNER — v1 PROFESSIONAL             ║")
     print("╚══════════════════════════════════════════════════════════╝\n")
 
-    data_dir = os.path.dirname(os.path.abspath(__file__))
+    os.makedirs(REPORTS_DIR, exist_ok=True)
     ts = datetime.now().strftime('%Y%m%d_%H%M')
-    out_xlsx = os.path.join(data_dir, f"Risk_Sensitivity_{ts}.xlsx")
-    out_csv = os.path.join(data_dir, f"Risk_Sensitivity_{ts}.csv")
-    plot_dir = os.path.join(data_dir, f"plots_risk_{ts}")
+    out_xlsx = os.path.join(REPORTS_DIR, f"Risk_Sensitivity_{ts}.xlsx")
+    out_csv  = os.path.join(REPORTS_DIR, f"Risk_Sensitivity_{ts}.csv")
+    plot_dir = os.path.join(REPORTS_DIR, f"plots_risk_{ts}")
     os.makedirs(plot_dir, exist_ok=True)
 
-    base_params = resolve_asset_base_params(data_dir)
+    base_params = resolve_asset_base_params(DATA_DIR)
 
     # solo activos con archivo de precios
     asset_data = {}
@@ -233,11 +237,11 @@ def main():
 
     print("\n2. Cargando precios...")
     for asset, p in base_params.items():
-        pq = os.path.join(data_dir, f"{asset}_Data.parquet")
-        xl = os.path.join(data_dir, f"{asset}_Data.xlsx")
+        pq = os.path.join(DATA_DIR, f"{asset}_Data.parquet")
+        xl = os.path.join(DATA_DIR, f"{asset}_Data.xlsx")
         if not (os.path.exists(pq) or os.path.exists(xl)):
             continue
-        df, lr, vm, qc = load_price_data(asset, data_dir, p['digits'])
+        df, lr, vm, qc = load_price_data(asset, DATA_DIR, p['digits'])
         if df is not None:
             asset_data[asset] = (df, lr, vm)
             final_assets[asset] = p.copy()
@@ -420,7 +424,7 @@ def main():
         top_candidates = top_candidates.sort_values(['calmar_test', 'ret_test'], ascending=[False, False]).head(10)
     write_df_sheet(wb, 'Top_Candidates', top_candidates)
 
-    wb.save(os.path.join(data_dir, f"Risk_Sensitivity_{ts}.xlsx"))
+    wb.save(out_xlsx)
 
     print(f"\n✅ CSV:  {os.path.basename(out_csv)}")
     print(f"✅ Excel: Risk_Sensitivity_{ts}.xlsx")
