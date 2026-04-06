@@ -1,7 +1,12 @@
+import os
 import pandas as pd
 
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR   = os.path.join(_REPO_ROOT, "data", "backtesting")
+os.makedirs(DATA_DIR, exist_ok=True)
+
 # Leer archivo parquet
-df = pd.read_parquet("US30_Data.parquet")
+df = pd.read_parquet(os.path.join(DATA_DIR, "US30_Data.parquet"))
 
 # Convertir columna time
 df["time"] = pd.to_datetime(df["time"])
@@ -22,6 +27,7 @@ print("\nFilas encontradas:")
 print(df_filtrado)
 
 # Guardar resultado
-df_filtrado.to_csv("rango_filtrado.csv")
+out_path = os.path.join(DATA_DIR, "rango_filtrado.csv")
+df_filtrado.to_csv(out_path)
 
-print("\nArchivo guardado como: rango_filtrado.csv")
+print(f"\nArchivo guardado como: {out_path}")
