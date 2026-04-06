@@ -42,3 +42,4 @@ paths:
   state_file: "data/state/london_bot_state.json"
   audit_file: "reports/execution_audit/slippage_audit.csv"
   log_dir: "logs/london_bot/"
+  parity_file: "reports/london_bot/parity_log.csv"
