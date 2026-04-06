@@ -63,7 +63,7 @@ RISK_GRID = [
 
 from backtest_specs import (
     connect_mt5, safe_symbol,
-    _comm_from_history_rt, _comm_from_order_check_rt, get_live_commission_rt,
+    get_live_commission_rt,
     load_broker_specs_json, apply_json_specs,
 )
 
@@ -140,7 +140,7 @@ def resolve_asset_base_params(data_dir):
 # DATOS
 # ═══════════════════════════════════════════════════════════════════════
 
-from backtest_data import validate_price_data, load_price_data
+from backtest_data import load_price_data
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -154,10 +154,7 @@ from backtest_runner import run_backtest
 # MÉTRICAS
 # ═══════════════════════════════════════════════════════════════════════
 
-from backtest_stats import (
-    bootstrap_mean_ci, sign_test_pvalue, monte_carlo_dd,
-    daily_equity, calc_metrics,
-)
+from backtest_stats import calc_metrics
 
 
 # ═══════════════════════════════════════════════════════════════════════
