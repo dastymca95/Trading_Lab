@@ -138,6 +138,8 @@ def simulate_trade_lifecycle(si, H, L, C, sl, ep, sp, direction, av, p):
         ns  = (bp - av*p['trail_mult']) if ib else (bp + av*p['trail_mult'])
         ns  = max(ns, be_p) if ib else min(ns, be_p)
         csl = max(csl, ns) if ib else min(csl, ns)
+        if ib  and l2 <= csl: xp = csl; bars = i+1; break
+        if not ib and h2 >= csl: xp = csl; bars = i+1; break
     else:
         li = len(fC) - 1
         while li >= 0 and np.isnan(fC[li]): li -= 1
