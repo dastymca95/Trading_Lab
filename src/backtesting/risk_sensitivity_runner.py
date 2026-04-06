@@ -221,11 +221,12 @@ def main():
     print("║   RISK SENSITIVITY RUNNER — v1 PROFESSIONAL             ║")
     print("╚══════════════════════════════════════════════════════════╝\n")
 
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-    ts = datetime.now().strftime('%Y%m%d_%H%M')
-    out_xlsx = os.path.join(REPORTS_DIR, f"Risk_Sensitivity_{ts}.xlsx")
-    out_csv  = os.path.join(REPORTS_DIR, f"Risk_Sensitivity_{ts}.csv")
-    plot_dir = os.path.join(REPORTS_DIR, f"plots_risk_{ts}")
+    ts      = datetime.now().strftime('%Y%m%d_%H%M')
+    RUN_DIR = os.path.join(REPORTS_DIR, f"run_{ts}")
+    os.makedirs(RUN_DIR, exist_ok=True)
+    out_xlsx = os.path.join(RUN_DIR, f"Risk_Sensitivity_{ts}.xlsx")
+    out_csv  = os.path.join(RUN_DIR, f"Risk_Sensitivity_{ts}.csv")
+    plot_dir = os.path.join(RUN_DIR, f"plots_risk_{ts}")
     os.makedirs(plot_dir, exist_ok=True)
 
     base_params = resolve_asset_base_params(DATA_DIR)
