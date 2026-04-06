@@ -61,7 +61,9 @@ EXPECTED_MINUTES = 2
 
 _REPO_ROOT         = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OUTPUT_DIR         = os.path.join(_REPO_ROOT, "data", "backtesting")
+PIPELINE_RUNS_DIR  = os.path.join(OUTPUT_DIR, "pipeline_runs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(PIPELINE_RUNS_DIR, exist_ok=True)
 AUTO_ENABLE_SYMBOL = True
 
 # Columnas que el backtest necesita — en este orden exacto
@@ -621,8 +623,8 @@ def main():
         json.dump(specs_snapshot, f, indent=2,
                   ensure_ascii=False, default=str)
 
-    # ── CSV de resumen ───────────────────────────────────────────────
-    csv_path = os.path.join(OUTPUT_DIR, f"package_summary_{ts}.csv")
+    # ── CSV de resumen (metadata de corrida, no consumido por el backtest) ──
+    csv_path = os.path.join(PIPELINE_RUNS_DIR, f"package_summary_{ts}.csv")
     pd.DataFrame(summary_rows).to_csv(csv_path, index=False)
 
     # ── Resumen final ────────────────────────────────────────────────
