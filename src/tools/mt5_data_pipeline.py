@@ -258,12 +258,25 @@ def get_specs(symbol: str) -> Optional[Dict]:
 # ══════════════════════════════════════════════════════════════════════
 
 def download_rates(symbol: str) -> pd.DataFrame:
-    rates = mt5.copy_rates_range(symbol, MT5_TIMEFRAME, DATE_FROM, DATE_TO)
+    # Fix corte temporal: date_to calculado por símbolo en tiempo real (UTC)
+    # datetime.now() naive causaba truncamiento ~3h por offset UTC del broker
+    tick = mt5.symbol_info_tick(symbol)
+    if tick:
+        date_to = datetime.utcfromtimestamp(tick.time) + timedelta(minutes=10)
+        log(f"  [date_to] now_local={datetime.now().strftime('%H:%M:%S')} | "
+            f"tick.time={datetime.utcfromtimestamp(tick.time).strftime('%Y-%m-%d %H:%M:%S')} UTC | "
+            f"date_to={date_to.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    else:
+        date_to = datetime.utcnow()
+        log(f"  [date_to] tick no disponible para {symbol}, usando utcnow={date_to.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+
+    rates = mt5.copy_rates_range(symbol, MT5_TIMEFRAME, DATE_FROM, date_to)
     if rates is None or len(rates) == 0:
         log(f"  ⚠️  {symbol}: sin datos en el rango solicitado")
         return pd.DataFrame()
     df         = pd.DataFrame(rates)
     df["time"] = pd.to_datetime(df["time"], unit="s")
+    log(f"  [velas] primera={df['time'].iloc[0]} | última={df['time'].iloc[-1]} | total={len(df):,}")
     # Garantizar que existan todas las columnas necesarias
     for col in DATA_COLUMNS:
         if col not in df.columns:
@@ -584,7 +597,7 @@ def main():
 
         # 2. Datos históricos
         log(f"\n  Descargando velas {TIMEFRAME_LABEL} "
-            f"{DATE_FROM.strftime('%Y-%m-%d')} → {DATE_TO.strftime('%Y-%m-%d')}...")
+            f"{DATE_FROM.strftime('%Y-%m-%d')} → tick actual (UTC)...")
         df = download_rates(asset)
         if df.empty:
             row["status"] = "no_data"
