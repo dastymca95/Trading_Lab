@@ -176,3 +176,11 @@ def history_deals_get(date_from: datetime, date_to: datetime):
     Wrapper para history_deals_get().
     """
     return mt5.history_deals_get(date_from, date_to)
+
+
+def is_mt5_connected() -> bool:
+    """
+    Verifica si el terminal MT5 sigue respondiendo.
+    Devuelve False si el terminal fue cerrado o la API está rota.
+    """
+    return mt5.terminal_info() is not None

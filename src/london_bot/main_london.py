@@ -7,7 +7,7 @@ from typing import Dict, Any
 
 from src.shared.config_loader import load_app_config
 from src.shared.logger_setup import setup_logger
-from src.shared.mt5_connector import connect_mt5, get_account_info, get_mt5_now, get_terminal_info, shutdown_mt5
+from src.shared.mt5_connector import connect_mt5, get_account_info, get_mt5_now, get_terminal_info, shutdown_mt5, is_mt5_connected
 from src.london_bot.state_manager import load_state, save_state
 from src.london_bot.validation_london import (
     ensure_audit_csv,
@@ -164,6 +164,11 @@ def main() -> None:
     last_signal_check: Dict[str, bool] = {}
     last_date = None
 
+    # Contador de fallos consecutivos de tick por símbolo (detección de desconexión MT5)
+    _api_error_counts: Dict[str, int] = {}
+    _API_ERR_WARN_FIRST  = 3   # fallos antes del primer warning  (3 × 10s = 30s)
+    _API_ERR_WARN_REPEAT = 30  # fallos entre warnings periódicos (30 × 10s = 5 min)
+
     signal_hours = config["strategy"]["signal_hours_mt5"]
     scan_minutes = config["strategy"]["scan_minutes_after_signal"]
 
@@ -219,14 +224,45 @@ def main() -> None:
                     )
 
                     open_positions.pop(symbol)
+                    _api_error_counts.pop(symbol, None)
                     state_changed = True
 
-                elif (
-                    pos.sl != sl_before
-                    or pos.breakeven_hit != be_before
-                    or abs(pos.best_price - bp_before) > 10 ** (-digits)
-                ):
-                    state_changed = True
+                elif status == "error":
+                    _api_error_counts[symbol] = _api_error_counts.get(symbol, 0) + 1
+                    n = _api_error_counts[symbol]
+
+                    if n == _API_ERR_WARN_FIRST:
+                        if not is_mt5_connected():
+                            log.warning(
+                                f"🔴 {symbol} | MT5 DESCONECTADO | trailing suspendido tras "
+                                f"{n} fallos de tick | verifique el terminal y reinicie el bot"
+                            )
+                        else:
+                            log.warning(
+                                f"⚠️  {symbol} | tick no disponible ({n} intentos) | "
+                                f"terminal accesible pero símbolo sin datos | "
+                                f"posición sin protección activa"
+                            )
+
+                    elif n > _API_ERR_WARN_FIRST and (n - _API_ERR_WARN_FIRST) % _API_ERR_WARN_REPEAT == 0:
+                        elapsed_s = n * config["bot"]["trailing_check_seconds"]
+                        log.warning(
+                            f"🔴 {symbol} | trailing aún inactivo | {n} fallos consecutivos "
+                            f"({elapsed_s // 60}m {elapsed_s % 60}s) | SL original intacto"
+                        )
+
+                else:  # "ok" — trailing procesado normalmente
+                    prev = _api_error_counts.pop(symbol, 0)
+                    if prev > 0:
+                        log.info(
+                            f"✅ {symbol} | trailing restaurado tras {prev} fallos consecutivos"
+                        )
+                    if (
+                        pos.sl != sl_before
+                        or pos.breakeven_hit != be_before
+                        or abs(pos.best_price - bp_before) > 10 ** (-digits)
+                    ):
+                        state_changed = True
 
             if state_changed:
                 save_state(
@@ -396,6 +432,10 @@ def main() -> None:
                     f"Posiciones: {len(open_positions)} | "
                     f"Trades hoy: {dict(trades_today)}"
                 )
+                if info is None:
+                    log.warning(
+                        "🔴 get_account_info() devolvió None — MT5 posiblemente desconectado"
+                    )
 
             time.sleep(config["bot"]["trailing_check_seconds"])
 
