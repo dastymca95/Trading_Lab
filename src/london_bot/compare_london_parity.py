@@ -4,9 +4,12 @@ from pathlib import Path
 import pandas as pd
 
 
-MODULAR_FILE = Path(r"C:\Users\Dasty\PycharmProjects\Trading_Lab\reports\london_bot\parity_log.csv")
-LEGACY_FILE = Path(r"C:\Users\Dasty\PycharmProjects\Trading_Lab\reports\london_bot\parity_log_legacy.csv")
-OUTPUT_FILE = Path(r"C:\Users\Dasty\PycharmProjects\Trading_Lab\reports\london_bot\parity_comparison.csv")
+_REPO_ROOT  = Path(__file__).resolve().parents[2]
+REPORTS_DIR = _REPO_ROOT / "reports" / "london_bot"
+
+MODULAR_FILE = REPORTS_DIR / "parity_log.csv"
+LEGACY_FILE  = REPORTS_DIR / "parity_log_legacy.csv"
+OUTPUT_FILE  = REPORTS_DIR / "parity_comparison.csv"
 
 
 def eq(a, b, tol=1e-9):
