@@ -142,11 +142,7 @@ def open_position(
                         real_ticket = int(p_mt5.ticket)
                         break
 
-            be_level = (
-                real_price + spread_entry
-                if direction == 1
-                else real_price - spread_entry
-            )
+            be_level = float(real_price)
 
             logger.info(
                 f"✅ {symbol} {'BUY' if direction == 1 else 'SELL'} {lots}L @ {real_price} | "
