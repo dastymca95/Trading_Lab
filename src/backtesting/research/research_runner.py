@@ -77,6 +77,10 @@ ASSET_COST_PARAMS = {
 _TRAIN_END  = pd.Timestamp('2025-01-01')
 _TEST_START = pd.Timestamp('2025-01-01')
 
+# Primary research filter — consolidated baseline (LOW_VOL p50 w90).
+_PRIMARY_PCT = 50
+_PRIMARY_WIN = 90
+
 # Baselines to run.  Add rows here to test new hypotheses.
 BASELINES = [
     {'name': 'EU_OPEN_LONG', 'session': 'EU_OPEN', 'direction': 1},
@@ -506,6 +510,78 @@ def main() -> None:
                 )
             else:
                 print(f"  {vname:<22}  — no trades")
+        print()
+
+        # ── Consolidation: baseline vs LOW_VOL(_PRIMARY_PCT, _PRIMARY_WIN) ──
+        # This is the primary research filter going forward.
+        # Shows FULL/TEST summary then year-by-year to check temporal stability.
+        lv_primary = frozenset(
+            compute_daily_vol_regime(df, window=_PRIMARY_WIN, percentile=_PRIMARY_PCT)
+            .pipe(lambda s: s[s == 'LOW_VOL'].index)
+        )
+
+        print(f"── {asset}  CONSOLIDATION  baseline vs LOW_VOL(p{_PRIMARY_PCT},w{_PRIMARY_WIN}) ──")
+
+        # FULL / TEST summary — compact table, both variants
+        chdr = (f"  {'variant':<18}  {'per':<5}  {'n':>4}  {'WR%':>5}  "
+                f"{'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>7}")
+        print(chdr)
+        print(f"  {'-'*72}")
+        for v_lbl, inc in [('baseline', None), (f'LOW_VOL p{_PRIMARY_PCT}w{_PRIMARY_WIN}', lv_primary)]:
+            for per_lbl, ds, de in [('FULL', None, _TRAIN_END), ('TEST', _TEST_START, None)]:
+                t = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds, date_end=de,
+                    include_dates=inc,
+                )
+                m = _baseline_metrics(t, 250.0)
+                if m:
+                    pf_s = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "  inf"
+                    print(
+                        f"  {v_lbl:<18}  {per_lbl:<5}  {m['n']:>4}  {m['wr']:>4.1f}%  "
+                        f"{pf_s:>6}  {m['exp']:>+7.4f}  "
+                        f"{m['ret_pct']:>+7.2f}%  {m['mdd']:>7.2f}%"
+                    )
+                else:
+                    print(f"  {v_lbl:<18}  {per_lbl:<5}  — no trades")
+        print()
+
+        # Year-by-year breakdown — baseline vs LOW_VOL side by side
+        # Answers: is the improvement consistent or concentrated in one period?
+        print(f"  {'year':<6}  "
+              f"{'│':1}  {'base_n':>6}  {'base_PF':>7}  {'base_ret%':>9}  "
+              f"{'│':1}  {'lv_n':>4}  {'lv_PF':>7}  {'lv_ret%':>8}  {'lv_MDD%':>8}")
+        print(f"  {'-'*73}")
+        for yr in range(2018, 2027):
+            ds_y = pd.Timestamp(f'{yr}-01-01')
+            de_y = pd.Timestamp(f'{yr+1}-01-01')
+            t_base = run_fixed_window_baseline(
+                df, session='US_MID', direction=1,
+                sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                cap_start=250.0, date_start=ds_y, date_end=de_y,
+            )
+            t_lv = run_fixed_window_baseline(
+                df, session='US_MID', direction=1,
+                sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                cap_start=250.0, date_start=ds_y, date_end=de_y,
+                include_dates=lv_primary,
+            )
+            mb = _baseline_metrics(t_base, 250.0)
+            ml = _baseline_metrics(t_lv,   250.0)
+            if not mb and not ml:
+                continue    # year has no data
+            pf_b  = f"{mb['pf']:.3f}"        if mb and mb['pf'] != float('inf') else '  inf'
+            ret_b = f"{mb['ret_pct']:>+8.2f}%" if mb else '       -'
+            n_b   = mb['n']                   if mb else 0
+            pf_l  = f"{ml['pf']:.3f}"        if ml and ml['pf'] != float('inf') else '  inf'
+            ret_l = f"{ml['ret_pct']:>+7.2f}%" if ml else '      -'
+            mdd_l = f"{ml['mdd']:>7.2f}%"    if ml else '     -'
+            n_l   = ml['n']                   if ml else 0
+            print(
+                f"  {yr:<6}  │  {n_b:>6}  {pf_b:>7}  {ret_b:>9}  "
+                f"│  {n_l:>4}  {pf_l:>7}  {ret_l:>8}  {mdd_l:>8}"
+            )
         print()
 
 
