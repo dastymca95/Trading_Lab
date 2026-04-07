@@ -87,6 +87,24 @@ BASELINES = [
     {'name': 'US_MID_LONG',  'session': 'US_MID',  'direction': 1},
 ]
 
+# ─── Asset-specific primary hypothesis config ─────────────────────────────────
+# After timing refinement we no longer use a shared US_MID window for all assets.
+# US500 → edge is distributed across full US_MID (16-19h UTC)  — use full window.
+# USTEC → edge is concentrated in the early sub-window (16-17h UTC) — restrict.
+# LOW_VOL filter applied to both: p50, w90 (primary filter from robustness sweep).
+ASSET_PRIMARY_CONFIG = {
+    'US500': {
+        'utc_hour_from': None,  # full US_MID 16-19h UTC
+        'utc_hour_to':   None,
+        'window_label':  'US_MID full  16-19h UTC',
+    },
+    'USTEC': {
+        'utc_hour_from': 16,    # early US_MID 16-17h UTC
+        'utc_hour_to':   17,
+        'window_label':  'US_MID early 16-17h UTC',
+    },
+}
+
 # ─── FOMC decision dates ─────────────────────────────────────────────────────
 # FOMC rate decisions typically land at 14:00 ET = 19:00 UTC (winter) /
 # 18:00 UTC (summer) — inside the US_MID window (16:00–19:59 UTC).
@@ -640,6 +658,91 @@ def main() -> None:
                 else:
                     print(f"  {v_lbl:<20}  {win_lbl:<16}  — no trades")
             print()
+
+        # ── Asset-specific primary hypothesis ─────────────────────────────
+        # Each asset now has its own independent primary baseline.
+        # This section makes the divergence explicit and is the reference
+        # for any future live hypothesis testing.
+        #
+        #   US500 → US_MID full (16-19h UTC) + LOW_VOL(p50,w90)
+        #   USTEC → US_MID early (16-17h UTC) + LOW_VOL(p50,w90)
+        #
+        # Comparison: [A] shared US_MID full baseline (no filter)
+        #             [B] asset-specific window (no filter)   ← only differs for USTEC
+        #             [C] asset-specific window + LOW_VOL     ← primary hypothesis
+        pcfg = ASSET_PRIMARY_CONFIG.get(asset)
+        if pcfg is None:
+            continue
+
+        hfrom = pcfg['utc_hour_from']
+        hto   = pcfg['utc_hour_to']
+        wlbl  = pcfg['window_label']
+
+        print(f"── {asset}  ASSET-SPECIFIC PRIMARY HYPOTHESIS {'─'*18}")
+        print(f"  Primary window : {wlbl}")
+        print(f"  Filter         : LOW_VOL (p{_PRIMARY_PCT}, w{_PRIMARY_WIN})")
+        print(f"  Reference      : US_MID full baseline (no filter, no window restriction)")
+        print()
+
+        # FULL + TEST summary table
+        ahdr = (f"  {'variant':<32}  {'per':<5}  {'n':>4}  {'WR%':>5}  "
+                f"{'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>7}")
+        print(ahdr)
+        print(f"  {'-'*80}")
+
+        asset_variants = [
+            # (label,                       include,    hfrom, hto)
+            ('US_MID full  [shared ref]',   None,       None,  None),
+            (f'{wlbl} [no filt]',           None,       hfrom, hto),
+            (f'{wlbl} + LOW_VOL [PRIMARY]', lv_primary, hfrom, hto),
+        ]
+
+        for per_lbl, ds, de in [('FULL', None, _TRAIN_END), ('TEST', _TEST_START, None)]:
+            for av_lbl, inc, ahf, aht in asset_variants:
+                t = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds, date_end=de,
+                    include_dates=inc,
+                    utc_hour_from=ahf, utc_hour_to=aht,
+                )
+                m = _baseline_metrics(t, 250.0)
+                if m:
+                    pf_s = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "  inf"
+                    print(
+                        f"  {av_lbl:<32}  {per_lbl:<5}  {m['n']:>4}  {m['wr']:>4.1f}%  "
+                        f"{pf_s:>6}  {m['exp']:>+7.4f}  "
+                        f"{m['ret_pct']:>+7.2f}%  {m['mdd']:>7.2f}%"
+                    )
+                else:
+                    print(f"  {av_lbl:<32}  {per_lbl:<5}  — no trades")
+            print()
+
+        # Year-by-year breakdown — primary hypothesis only (asset-specific window + LOW_VOL)
+        # Answers: is the combined filter + window restriction stable across years?
+        print(f"  Year-by-year — PRIMARY hypothesis ({wlbl} + LOW_VOL p{_PRIMARY_PCT}w{_PRIMARY_WIN})")
+        print(f"  {'year':<6}  {'n':>4}  {'WR%':>5}  {'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>7}")
+        print(f"  {'-'*52}")
+        for yr in range(2018, 2027):
+            ds_y = pd.Timestamp(f'{yr}-01-01')
+            de_y = pd.Timestamp(f'{yr+1}-01-01')
+            t_prim = run_fixed_window_baseline(
+                df, session='US_MID', direction=1,
+                sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                cap_start=250.0, date_start=ds_y, date_end=de_y,
+                include_dates=lv_primary,
+                utc_hour_from=hfrom, utc_hour_to=hto,
+            )
+            mp = _baseline_metrics(t_prim, 250.0)
+            if not mp:
+                continue
+            pf_s = f"{mp['pf']:.3f}" if mp['pf'] != float('inf') else "  inf"
+            print(
+                f"  {yr:<6}  {mp['n']:>4}  {mp['wr']:>4.1f}%  "
+                f"{pf_s:>6}  {mp['exp']:>+7.4f}  "
+                f"{mp['ret_pct']:>+7.2f}%  {mp['mdd']:>7.2f}%"
+            )
+        print()
 
 
 if __name__ == '__main__':
