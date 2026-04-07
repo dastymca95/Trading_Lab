@@ -124,7 +124,8 @@ def simulate_trade_lifecycle(si, H, L, C, sl, ep, sp, direction, av, p):
     fH  = H[si+1:ei]; fL = L[si+1:ei]; fC = C[si+1:ei]
     ib  = direction == 1
     csl = sl; bp = ep; ber = False
-    be_p = (ep + sp) if ib else (ep - sp)
+    _be = p.get('be_atr_mult', 0.0) * av or sp   # ATR-based BE threshold; fallback to spread
+    be_p = (ep + _be) if ib else (ep - _be)
     xp  = ep; bars = MAX_BARS
 
     for i in range(len(fH)):
