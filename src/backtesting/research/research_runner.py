@@ -61,8 +61,26 @@ ASSET_DIGITS = {
     'US30': 2, 'USTEC': 2, 'US500': 2, 'DE40': 2, 'XAUUSD': 2,
 }
 
-# Sessions to analyse in the baseline report
+# Sessions to analyse in the descriptive baseline report
 SESSIONS_OF_INTEREST = ['EU_PRE', 'EU_OPEN', 'EU_MID', 'US_PRE', 'US_OPEN', 'US_MID']
+
+# ─── Fixed-window baseline config ────────────────────────────────────────────
+# Cost params per asset (mirrors backtest_config; update here if specs change).
+# sp = spread in price points, cs = contract size, ml = minimum lot.
+ASSET_COST_PARAMS = {
+    'US500': {'sp': 0.5, 'cs': 1, 'ml': 0.1},
+    'USTEC': {'sp': 1.0, 'cs': 1, 'ml': 0.1},
+}
+
+# Date split — mirrors backtest_config for consistent FULL/TEST labeling.
+_TRAIN_END  = pd.Timestamp('2025-01-01')
+_TEST_START = pd.Timestamp('2025-01-01')
+
+# Baselines to run.  Add rows here to test new hypotheses.
+BASELINES = [
+    {'name': 'EU_OPEN_LONG', 'session': 'EU_OPEN', 'direction': 1},
+    {'name': 'US_MID_LONG',  'session': 'US_MID',  'direction': 1},
+]
 
 # ─── Session return baseline ──────────────────────────────────────────────────
 
@@ -116,6 +134,126 @@ def _print_session_stats(stats: pd.DataFrame, asset: str, session: str) -> None:
     )
 
 
+# ─── Fixed-window baseline engine ────────────────────────────────────────────
+
+def run_fixed_window_baseline(
+    df: pd.DataFrame,
+    session: str,
+    direction: int,
+    sp: float,
+    lots: float,
+    cs: float,
+    cap_start: float = 250.0,
+    date_start: pd.Timestamp = None,
+    date_end: pd.Timestamp = None,
+) -> pd.DataFrame:
+    """
+    Simulate a fixed-window session trade: enter at session open, exit at
+    session close.  One trade per day.  No trailing, no BE, no filters.
+
+    Spread cost applied once at entry (same convention as backtest_runner).
+    Commission = 0 (US500/USTEC have no RT commission at this broker).
+
+    Parameters
+    ----------
+    df        : labeled DataFrame (must have session_label + time_utc columns).
+    session   : session label to trade (e.g. 'EU_OPEN').
+    direction : 1 = LONG, -1 = SHORT.
+    sp        : spread in price points.
+    lots      : lot size (use ml = minimum lot for conservative baseline).
+    cs        : contract size (value per point per lot).
+    cap_start : starting capital for this asset slice.
+    date_start, date_end : optional date range filter (inclusive / exclusive).
+
+    Returns
+    -------
+    DataFrame of trades:
+      date, entry, exit, gross, cost, net, result ('WIN'/'LOSS'/'BE'), cap
+    """
+    daily = session_return_stats(df, session)
+    if daily.empty:
+        return pd.DataFrame()
+
+    if date_start is not None:
+        daily = daily[pd.to_datetime(daily['date']) >= date_start]
+    if date_end is not None:
+        daily = daily[pd.to_datetime(daily['date']) < date_end]
+    daily = daily.reset_index(drop=True)
+
+    cap  = cap_start
+    rows = []
+    for _, row in daily.iterrows():
+        ep    = row['open_px']
+        xp    = row['close_px']
+        gross = (xp - ep) * direction * lots * cs
+        cost  = sp * lots * cs          # spread cost at entry
+        net   = gross - cost
+        result = 'WIN' if net > 1e-4 else ('LOSS' if net < -1e-4 else 'BE')
+        cap   += net
+        rows.append({
+            'date':   row['date'],
+            'entry':  round(ep, 4),
+            'exit':   round(xp, 4),
+            'gross':  round(gross, 4),
+            'cost':   round(cost, 4),
+            'net':    round(net, 4),
+            'result': result,
+            'cap':    round(cap, 4),
+        })
+    return pd.DataFrame(rows)
+
+
+def _baseline_metrics(trades: pd.DataFrame, cap_start: float) -> dict:
+    """Compute summary metrics from a fixed-window trade list."""
+    if trades.empty:
+        return {}
+    n      = len(trades)
+    wins   = trades.loc[trades['result'] == 'WIN',  'net']
+    losses = trades.loc[trades['result'] == 'LOSS', 'net']
+    n_win  = len(wins)
+    n_loss = len(losses)
+
+    wr     = n_win / n * 100 if n else 0.0
+    aw     = float(wins.mean())   if n_win  else 0.0
+    al     = float(losses.mean()) if n_loss else 0.0
+
+    gross_w = float(wins.sum())
+    gross_l = abs(float(losses.sum()))
+    pf      = gross_w / gross_l if gross_l > 0 else float('inf')
+    exp     = float(trades['net'].mean())
+    ret_pct = trades['net'].sum() / cap_start * 100
+
+    caps    = np.array([cap_start] + list(trades['cap']))
+    peak    = np.maximum.accumulate(caps)
+    dd      = (caps - peak) / np.where(peak > 0, peak, 1.0)
+    mdd     = float(dd.min()) * 100
+
+    return dict(
+        n=n, n_win=n_win, n_loss=n_loss,
+        wr=round(wr, 1),
+        aw=round(aw, 4), al=round(al, 4),
+        pf=round(pf, 3) if pf != float('inf') else float('inf'),
+        exp=round(exp, 4),
+        ret_pct=round(float(ret_pct), 2),
+        mdd=round(mdd, 2),
+    )
+
+
+def _print_baseline_report(m: dict, label: str) -> None:
+    """Print a one-block summary for a single baseline + period combination."""
+    if not m:
+        print(f"  {label}: no trades")
+        return
+    pf_str = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "inf"
+    print(
+        f"  {label}\n"
+        f"    n={m['n']}  WR={m['wr']}%  "
+        f"aw={m['aw']:+.4f}  al={m['al']:+.4f}  PF={pf_str}\n"
+        f"    exp/trade={m['exp']:+.4f}  "
+        f"return={m['ret_pct']:+.2f}%  MDD={m['mdd']:.2f}%"
+    )
+
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -154,11 +292,37 @@ def main() -> None:
             stats = session_return_stats(df, sess)
             _print_session_stats(stats, asset, sess)
 
-    print("\n✅  Research baseline completo.")
-    print(
-        "\nNext step: pick the session with strongest bull% bias"
-        " and build a fixed_time_entry() hypothesis in this file."
-    )
+        # ── Fixed-window baselines ────────────────────────────────────────
+        ap = ASSET_COST_PARAMS.get(asset)
+        if ap is None:
+            print(f"\n  ⚠️  {asset}: sin cost params en ASSET_COST_PARAMS, skipping baselines")
+            continue
+
+        print(f"\n  {asset} — fixed-window baselines  "
+              f"(lots={ap['ml']}, sp={ap['sp']}, cs={ap['cs']}, comm=0)")
+        print(f"  {'─'*65}")
+
+        for bl in BASELINES:
+            for period, ds, de in [
+                ('FULL', None,        _TRAIN_END),
+                ('TEST', _TEST_START, None),
+            ]:
+                trades = run_fixed_window_baseline(
+                    df,
+                    session    = bl['session'],
+                    direction  = bl['direction'],
+                    sp         = ap['sp'],
+                    lots       = ap['ml'],
+                    cs         = ap['cs'],
+                    cap_start  = 250.0,
+                    date_start = ds,
+                    date_end   = de,
+                )
+                m = _baseline_metrics(trades, 250.0)
+                _print_baseline_report(m, f"{bl['name']} | {period}")
+            print()
+
+    print("✅  Research baseline completo.")
 
 
 if __name__ == '__main__':
