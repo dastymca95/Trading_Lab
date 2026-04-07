@@ -1111,6 +1111,246 @@ def main() -> None:
                     print(f"  {period_lbl:<6}  {gv_lbl:<22}  — no trades")
             print()
 
+        # ── USTEC regime discrimination: 2022 vs high-ATR good years ──────
+        # Both 2022 (atr_lv=8.61, PF=0.78) and 2025 (atr_lv=8.29, PF=1.62)
+        # have similar ATR levels yet opposite outcomes.
+        # This block isolates what else differs beyond raw ATR level.
+        #
+        # Key discriminating metric added: aw/|al| (win/loss asymmetry ratio)
+        #   good years: aw ≥ |al|  → ratio ≥ 1.0  (wins at least as large as losses)
+        #   2022       : aw < |al|  → ratio < 1.0  (losses disproportionately large)
+        #
+        # Selected years: control=2020,2023 | bad-high-ATR=2022 | good-high-ATR=2025,2026
+        # 2026 flagged: small sample (~11 trades), interpret with caution.
+        if asset == 'USTEC':
+            print(f"── USTEC  REGIME DISCRIMINATION — 2022 vs high-ATR good years ─────")
+            print(f"  Hypothesis : {wlbl} + LOW_VOL(p{_PRIMARY_PCT},w{_PRIMARY_WIN})")
+            print(f"  Question   : does 2025 belong to the same regime as 2022 or not?")
+            print(f"  Note       : 2026 small sample (~11 trades) — treat as indicative only.")
+            print()
+
+            disc_years = [2020, 2022, 2023, 2025, 2026]
+
+            dhdr2 = (
+                f"  {'year':<6}  {'n':>4}  {'WR%':>5}  {'aw':>7}  {'al':>7}  "
+                f"{'asym':>6}  {'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>6}  "
+                f"{'std':>6}  {'atr_lv':>6}  {'thr_mn':>6}"
+            )
+            print(dhdr2)
+            print(f"  {'-'*98}")
+
+            for yr in disc_years:
+                ds_y = pd.Timestamp(f'{yr}-01-01')
+                de_y = pd.Timestamp(f'{yr+1}-01-01')
+                t_y = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds_y, date_end=de_y,
+                    include_dates=lv_primary,
+                    utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m_y = _baseline_metrics(t_y, 250.0)
+                if not m_y:
+                    print(f"  {yr:<6}  — no trades")
+                    continue
+
+                std_y  = float(t_y['net'].std()) if len(t_y) > 1 else float('nan')
+                al_abs = abs(m_y['al'])
+                asym   = m_y['aw'] / al_abs if al_abs > 0 else float('nan')
+
+                lv_yr   = {d for d in lv_primary     if d.year == yr}
+                yr_all  = {d for d in all_dates_set   if d.year == yr}
+                atr_lv_y = float(daily_atr_s.loc[list(lv_yr)].mean()) if lv_yr  else float('nan')
+                thr_yr   = rolling_thr.loc[list(yr_all)].dropna()
+                thr_mn_y = float(thr_yr.mean())                        if len(thr_yr) else float('nan')
+
+                pf_s   = f"{m_y['pf']:.3f}"  if m_y['pf'] != float('inf') else "  inf"
+                asym_s = f"{asym:>6.3f}"     if not np.isnan(asym)    else "     —"
+                std_s  = f"{std_y:>6.2f}"    if not np.isnan(std_y)   else "     —"
+                atr_s  = f"{atr_lv_y:>6.2f}" if not np.isnan(atr_lv_y) else "     —"
+                thr_s  = f"{thr_mn_y:>6.2f}" if not np.isnan(thr_mn_y) else "     —"
+                marker = "  ◄ BAD" if yr == 2022 else (
+                         "  (small n)" if yr == 2026 else "")
+
+                print(
+                    f"  {yr:<6}  {m_y['n']:>4}  {m_y['wr']:>4.1f}%  "
+                    f"{m_y['aw']:>+7.4f}  {m_y['al']:>+7.4f}  "
+                    f"{asym_s}  {pf_s:>6}  {m_y['exp']:>+7.4f}  "
+                    f"{m_y['ret_pct']:>+6.2f}%  {m_y['mdd']:>6.2f}%  "
+                    f"{std_s}  {atr_s}  {thr_s}{marker}"
+                )
+            print()
+
+            # Bucket summary: pool years into ATR-regime buckets
+            # control = lower-ATR good years (2020, 2023)
+            # high-ATR bad = 2022
+            # high-ATR good = 2025 + 2026 (pooled to compensate small 2026 n)
+            print(f"  Bucket summary  (years pooled by ATR regime + outcome)")
+            bhdr = (
+                f"  {'bucket':<24}  {'years':<10}  {'n':>4}  {'WR%':>5}  "
+                f"{'asym':>6}  {'PF':>6}  {'exp':>7}  {'std':>6}"
+            )
+            print(bhdr)
+            print(f"  {'-'*72}")
+
+            buckets = [
+                ('control  (low ATR)',   [2020, 2023]),
+                ('high-ATR bad',         [2022]),
+                ('high-ATR good',        [2025, 2026]),
+            ]
+            for bkt_lbl, bkt_years in buckets:
+                bkt_inc = frozenset(d for d in lv_primary if d.year in set(bkt_years))
+                t_bkt   = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, include_dates=bkt_inc,
+                    utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m_bkt = _baseline_metrics(t_bkt, 250.0)
+                if not m_bkt:
+                    print(f"  {bkt_lbl:<24}  — no trades")
+                    continue
+                std_b  = float(t_bkt['net'].std()) if len(t_bkt) > 1 else float('nan')
+                al_b   = abs(m_bkt['al'])
+                asym_b = m_bkt['aw'] / al_b if al_b > 0 else float('nan')
+                pf_sb  = f"{m_bkt['pf']:.3f}" if m_bkt['pf'] != float('inf') else "  inf"
+                asym_sb = f"{asym_b:>6.3f}"   if not np.isnan(asym_b) else "     —"
+                std_sb  = f"{std_b:>6.2f}"    if not np.isnan(std_b)  else "     —"
+                yr_str  = '+'.join(str(y) for y in bkt_years)
+                print(
+                    f"  {bkt_lbl:<24}  {yr_str:<10}  {m_bkt['n']:>4}  "
+                    f"{m_bkt['wr']:>4.1f}%  {asym_sb}  {pf_sb:>6}  "
+                    f"{m_bkt['exp']:>+7.4f}  {std_sb}"
+                )
+            print()
+
+        # ── USTEC trade-quality discriminator audit ───────────────────────
+        # From regime discrimination: 2022 and 2025 both have atr_lv ~8-9,
+        # but opposite outcomes.  ATR is not the discriminant.
+        #
+        # Here we look at the *directional structure* of the session window
+        # on LOW_VOL days — derived from raw bars, no new functions:
+        #
+        #   efficiency = (close - open) / (high - low)
+        #     Ranges from -1 to +1.  High positive value → clean directional
+        #     move within the window.  Near-zero or negative → whipsaw /
+        #     reversal: the market moved then came back.
+        #
+        #   mfe_mae = (high - open) / (open - low)    [LONG perspective]
+        #     > 1.0 → market went further in our favor than against us
+        #     < 1.0 → market went further against us (explains al > aw in 2022)
+        #     Median used (not mean) to reduce sensitivity to outlier days where
+        #     mae → 0 (perfect days with no adverse excursion).
+        #
+        # If 2022 has lower efficiency and lower mfe_mae vs 2025, the session
+        # window in 2022 was structurally worse — not just higher volatility.
+        if asset == 'USTEC':
+            print(f"── USTEC  TRADE-QUALITY DISCRIMINATOR AUDIT ─────────────────────────")
+            print(f"  Window     : {wlbl}")
+            print(f"  Filter     : LOW_VOL (p{_PRIMARY_PCT}, w{_PRIMARY_WIN})")
+            print(f"  efficiency : (close-open)/(high-low)  — directional purity [-1,+1]")
+            print(f"  mfe_mae    : (high-open)/(open-low)   — favorable vs adverse excursion (median)")
+            print()
+
+            # Build per-day quality metrics — inline groupby on raw bars
+            mask_q = df['session_label'] == 'US_MID'
+            sub_q  = df[mask_q].copy()
+            if hfrom is not None:
+                sub_q = sub_q[sub_q['time_utc'].dt.hour >= hfrom]
+            if hto is not None:
+                sub_q = sub_q[sub_q['time_utc'].dt.hour <= hto]
+            sub_q = sub_q[sub_q['date'].isin(lv_primary)]
+
+            q_rows = []
+            for d_q, g_q in sub_q.groupby('date'):
+                g_q = g_q.sort_values('time_utc')
+                o_q  = float(g_q['open'].iloc[0])
+                c_q  = float(g_q['close'].iloc[-1])
+                h_q  = float(g_q['high'].max())
+                l_q  = float(g_q['low'].min())
+                rng  = h_q - l_q
+                mfe  = max(h_q - o_q, 0.0)
+                mae  = max(o_q - l_q, 0.0)
+                q_rows.append({
+                    'date':       d_q,
+                    'year':       d_q.year,
+                    'efficiency': (c_q - o_q) / rng if rng > 1e-9 else float('nan'),
+                    'mfe_mae':    mfe / mae           if mae > 1.0  else float('nan'),
+                })
+            qual_df = pd.DataFrame(q_rows)
+
+            disc_years = [2020, 2022, 2023, 2025, 2026]
+            qhdr = (
+                f"  {'year':<6}  {'n':>4}  {'WR%':>5}  {'PF':>6}  {'exp':>7}  "
+                f"{'efficiency':>10}  {'mfe_mae':>8}"
+            )
+            print(qhdr)
+            print(f"  {'-'*62}")
+
+            for yr in disc_years:
+                ds_y = pd.Timestamp(f'{yr}-01-01')
+                de_y = pd.Timestamp(f'{yr+1}-01-01')
+                t_y  = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds_y, date_end=de_y,
+                    include_dates=lv_primary,
+                    utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m_y  = _baseline_metrics(t_y, 250.0)
+                yr_q = qual_df[qual_df['year'] == yr]
+                eff_m = float(yr_q['efficiency'].mean())   if not yr_q.empty else float('nan')
+                mm_m  = float(yr_q['mfe_mae'].median())    if not yr_q.empty else float('nan')
+
+                pf_s  = f"{m_y['pf']:.3f}"  if m_y and m_y['pf'] != float('inf') else "    —"
+                eff_s = f"{eff_m:>10.4f}"   if not np.isnan(eff_m) else "         —"
+                mm_s  = f"{mm_m:>8.3f}"     if not np.isnan(mm_m)  else "       —"
+                wr_s  = f"{m_y['wr']:>4.1f}%" if m_y else "    —"
+                exp_s = f"{m_y['exp']:>+7.4f}" if m_y else "      —"
+                marker = "  ◄ BAD" if yr == 2022 else ("  (small n)" if yr == 2026 else "")
+
+                print(
+                    f"  {yr:<6}  {m_y['n'] if m_y else 0:>4}  {wr_s}  {pf_s:>6}  "
+                    f"{exp_s}  {eff_s}  {mm_s}{marker}"
+                )
+            print()
+
+            # Bucket quality summary — same buckets as discrimination section
+            print(f"  Bucket quality summary")
+            bqhdr = (
+                f"  {'bucket':<24}  {'years':<10}  {'n':>4}  "
+                f"{'efficiency':>10}  {'mfe_mae':>8}  {'WR%':>5}  {'PF':>6}"
+            )
+            print(bqhdr)
+            print(f"  {'-'*72}")
+
+            for bkt_lbl, bkt_years in [
+                ('control  (low ATR)',  [2020, 2023]),
+                ('high-ATR bad',        [2022]),
+                ('high-ATR good',       [2025, 2026]),
+            ]:
+                bkt_q   = qual_df[qual_df['year'].isin(bkt_years)]
+                bkt_inc = frozenset(d for d in lv_primary if d.year in set(bkt_years))
+                t_bkt   = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, include_dates=bkt_inc,
+                    utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m_bkt  = _baseline_metrics(t_bkt, 250.0)
+                eff_b  = float(bkt_q['efficiency'].mean())  if not bkt_q.empty else float('nan')
+                mm_b   = float(bkt_q['mfe_mae'].median())   if not bkt_q.empty else float('nan')
+                pf_sb  = f"{m_bkt['pf']:.3f}"  if m_bkt and m_bkt['pf'] != float('inf') else "    —"
+                eff_sb = f"{eff_b:>10.4f}"     if not np.isnan(eff_b) else "         —"
+                mm_sb  = f"{mm_b:>8.3f}"       if not np.isnan(mm_b)  else "       —"
+                wr_sb  = f"{m_bkt['wr']:>4.1f}%" if m_bkt else "    —"
+                yr_str = '+'.join(str(y) for y in bkt_years)
+                print(
+                    f"  {bkt_lbl:<24}  {yr_str:<10}  {len(bkt_q):>4}  "
+                    f"{eff_sb}  {mm_sb}  {wr_sb}  {pf_sb:>6}"
+                )
+            print()
+
 
 if __name__ == '__main__':
     main()
