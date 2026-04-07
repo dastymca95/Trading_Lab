@@ -1351,6 +1351,116 @@ def main() -> None:
                 )
             print()
 
+            # ── USTEC rolling trade-quality filter test ───────────────────────
+            # Causal test: does a look-ahead-free rolling quality guard improve
+            # USTEC primary without destroying 2025?
+            #
+            # Signal construction — no look-ahead:
+            #   qual_df already has per-day efficiency and mfe_mae.
+            #   shift(1) ensures day t uses only days 0..t-1.
+            #   min_periods = N//2 requires at least half the window before
+            #   the filter activates (early dates excluded conservatively).
+            #
+            # N_ROLL = 20 eligible LOW_VOL sessions ≈ 4-5 calendar weeks.
+            #   Short enough to detect within-year regime shifts.
+            #   Long enough to avoid reacting to single noisy days.
+            #
+            # Thresholds — natural break-even points from observed data:
+            #   eff_roll  > 0.0  : net directional move was positive on average
+            #   mfe_roll  > 1.0  : favorable excursion exceeded adverse excursion
+            # Neither threshold is tuned to any specific year.
+            N_ROLL = 20
+            qual_s = qual_df.sort_values('date').reset_index(drop=True)
+            qual_s['eff_roll'] = (
+                qual_s['efficiency']
+                .shift(1)
+                .rolling(N_ROLL, min_periods=N_ROLL // 2)
+                .mean()
+            )
+            qual_s['mfe_roll'] = (
+                qual_s['mfe_mae']
+                .shift(1)
+                .rolling(N_ROLL, min_periods=N_ROLL // 2)
+                .median()
+            )
+
+            eff_pass = frozenset(qual_s.loc[qual_s['eff_roll'] > 0.0, 'date'])
+            mfe_pass = frozenset(qual_s.loc[qual_s['mfe_roll'] > 1.0, 'date'])
+            lv_eff   = frozenset(d for d in lv_primary if d in eff_pass)
+            lv_mfe   = frozenset(d for d in lv_primary if d in mfe_pass)
+
+            print(f"── USTEC  ROLLING TRADE-QUALITY FILTER TEST ────────────────────────")
+            print(f"  Rolling N={N_ROLL} LOW_VOL sessions | shift(1) | no look-ahead")
+            print(f"  eff_roll  > 0.0  (rolling mean efficiency)   "
+                  f"n={len(lv_eff):4d} / {len(lv_primary)}")
+            print(f"  mfe_roll  > 1.0  (rolling median mfe_mae)    "
+                  f"n={len(lv_mfe):4d} / {len(lv_primary)}")
+            print()
+
+            rvars = [
+                ('PRIMARY only',      lv_primary),
+                ('+ roll_eff  > 0.0', lv_eff),
+                ('+ roll_mfe  > 1.0', lv_mfe),
+            ]
+
+            # ── FULL + TEST summary ───────────────────────────────────────────
+            rhdr = (f"  {'variant':<22}  {'per':<5}  {'n':>4}  {'WR%':>5}  "
+                    f"{'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>7}")
+            print(rhdr)
+            print(f"  {'-'*72}")
+
+            for rv_lbl, inc in rvars:
+                for per_lbl, ds, de in [('FULL', None, _TRAIN_END), ('TEST', _TEST_START, None)]:
+                    t = run_fixed_window_baseline(
+                        df, session='US_MID', direction=1,
+                        sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                        cap_start=250.0, date_start=ds, date_end=de,
+                        include_dates=inc, utc_hour_from=hfrom, utc_hour_to=hto,
+                    )
+                    m = _baseline_metrics(t, 250.0)
+                    if m:
+                        pf_s = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "  inf"
+                        print(
+                            f"  {rv_lbl:<22}  {per_lbl:<5}  {m['n']:>4}  {m['wr']:>4.1f}%  "
+                            f"{pf_s:>6}  {m['exp']:>+7.4f}  "
+                            f"{m['ret_pct']:>+7.2f}%  {m['mdd']:>7.2f}%"
+                        )
+                    else:
+                        print(f"  {rv_lbl:<22}  {per_lbl:<5}  — no trades")
+                print()
+
+            # ── Selected years: focus on 2022 vs 2025 ────────────────────────
+            print(f"  Selected years  (n | PF | ret%  per variant)")
+            syhdr = (
+                f"  {'year':<6}  "
+                f"│ {'prim_n':>6} {'prim_PF':>7} {'prim_ret%':>9}  "
+                f"│ {'eff_n':>5} {'eff_PF':>7} {'eff_ret%':>9}  "
+                f"│ {'mfe_n':>5} {'mfe_PF':>7} {'mfe_ret%':>8}"
+            )
+            print(syhdr)
+            print(f"  {'-'*84}")
+
+            for yr in [2020, 2022, 2023, 2025, 2026]:
+                ds_y = pd.Timestamp(f'{yr}-01-01')
+                de_y = pd.Timestamp(f'{yr+1}-01-01')
+                cols = []
+                for inc in [lv_primary, lv_eff, lv_mfe]:
+                    t_y = run_fixed_window_baseline(
+                        df, session='US_MID', direction=1,
+                        sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                        cap_start=250.0, date_start=ds_y, date_end=de_y,
+                        include_dates=inc, utc_hour_from=hfrom, utc_hour_to=hto,
+                    )
+                    m_y = _baseline_metrics(t_y, 250.0)
+                    if m_y:
+                        pf_y = f"{m_y['pf']:.3f}" if m_y['pf'] != float('inf') else "  inf"
+                        cols.append(f" {m_y['n']:>5} {pf_y:>7} {m_y['ret_pct']:>+8.2f}%")
+                    else:
+                        cols.append(f" {'—':>5} {'—':>7} {'—':>9}")
+                marker = "  ◄ BAD" if yr == 2022 else ("  (small n)" if yr == 2026 else "")
+                print(f"  {yr:<6}  │{'  │'.join(cols)}{marker}")
+            print()
+
 
 if __name__ == '__main__':
     main()
