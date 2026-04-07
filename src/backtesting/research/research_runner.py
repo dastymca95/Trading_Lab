@@ -744,6 +744,373 @@ def main() -> None:
             )
         print()
 
+        # ── Regime diagnostic — 2022 vs rest ─────────────────────────────
+        # Structural audit: what distinguishes the problem regime from good years?
+        #
+        # Regime quality columns (from df, no trades needed):
+        #   n_lv     : LOW_VOL days available in year (filter selectivity)
+        #   lv%      : LOW_VOL days / all trading days in year
+        #   atr_lv   : mean daily ATR on selected LOW_VOL days
+        #              → key question: was "calm" in 2022 actually calm vs other years?
+        #   atr_all  : mean daily ATR across all days in year
+        #              → overall regime level, independent of filter
+        #
+        # Trade performance columns (from trades on primary hypothesis):
+        #   n        : trades taken (session had data on that LOW_VOL day)
+        #   WR%      : win rate
+        #   aw       : average win (signed +)
+        #   al       : average loss (signed −)
+        #   PF       : profit factor
+        #   ret%     : period return on $250 starting capital
+        #
+        # std_net in aggregate table: per-trade net P&L standard deviation
+        #   → was 2022 more erratic (high variance) or just directionally wrong?
+        print(f"── {asset}  REGIME DIAGNOSTIC — {wlbl} + LOW_VOL(p{_PRIMARY_PCT},w{_PRIMARY_WIN}) ──")
+        print(f"  Regime quality vs trade performance per year.  ◄ = problem year 2022")
+        print()
+
+        daily_atr_s  = df.groupby('date')['atr14'].mean()   # date → mean ATR
+        all_dates_set = frozenset(daily_atr_s.index)
+
+        # Run full-history primary trades once (no date boundary, just the primary filter)
+        trades_diag = run_fixed_window_baseline(
+            df, session='US_MID', direction=1,
+            sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+            cap_start=250.0,
+            include_dates=lv_primary,
+            utc_hour_from=hfrom, utc_hour_to=hto,
+        )
+
+        # ── Table 1: year-by-year regime + performance ────────────────────
+        dhdr = (
+            f"  {'year':<6}  │  {'n_lv':>4}  {'lv%':>5}  {'atr_lv':>7}  {'atr_all':>7}  "
+            f"│  {'n':>4}  {'WR%':>5}  {'aw':>7}  {'al':>7}  {'PF':>6}  {'ret%':>7}"
+        )
+        print(dhdr)
+        print(f"  {'-'*85}")
+
+        for yr in range(2018, 2027):
+            yr_dates  = {d for d in all_dates_set if d.year == yr}
+            lv_yr     = {d for d in lv_primary     if d.year == yr}
+            n_all_yr  = len(yr_dates)
+            n_lv_yr   = len(lv_yr)
+            lv_pct_yr = n_lv_yr / n_all_yr * 100 if n_all_yr else float('nan')
+
+            atr_lv_yr  = (float(daily_atr_s.loc[list(lv_yr)].mean())
+                          if lv_yr else float('nan'))
+            atr_all_yr = (float(daily_atr_s.loc[list(yr_dates)].mean())
+                          if yr_dates else float('nan'))
+
+            if not trades_diag.empty:
+                t_yr = trades_diag[
+                    trades_diag['date'].apply(lambda d: d.year) == yr
+                ].reset_index(drop=True)
+            else:
+                t_yr = pd.DataFrame()
+
+            atr_lv_s  = f"{atr_lv_yr:>7.2f}"  if not np.isnan(atr_lv_yr)  else "      —"
+            atr_all_s = f"{atr_all_yr:>7.2f}" if not np.isnan(atr_all_yr) else "      —"
+            marker    = "  ◄" if yr == 2022 else ""
+
+            if t_yr.empty:
+                print(
+                    f"  {yr:<6}  │  {n_lv_yr:>4}  {lv_pct_yr:>4.0f}%  "
+                    f"{atr_lv_s}  {atr_all_s}  │  "
+                    f"{'—':>4}  {'—':>5}  {'—':>7}  {'—':>7}  {'—':>6}  {'—':>7}{marker}"
+                )
+                continue
+
+            m    = _baseline_metrics(t_yr, 250.0)
+            pf_s = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "  inf"
+            print(
+                f"  {yr:<6}  │  {n_lv_yr:>4}  {lv_pct_yr:>4.0f}%  "
+                f"{atr_lv_s}  {atr_all_s}  │  "
+                f"{m['n']:>4}  {m['wr']:>4.1f}%  "
+                f"{m['aw']:>+7.4f}  {m['al']:>+7.4f}  "
+                f"{pf_s:>6}  {m['ret_pct']:>+6.2f}%{marker}"
+            )
+        print()
+
+        # ── Table 2: 2022 vs rest aggregate ───────────────────────────────
+        print(f"  Aggregate: rest vs 2022")
+        ahdr = (
+            f"  {'period':<8}  {'n_lv':>4}  {'lv%':>5}  {'atr_lv':>7}  "
+            f"{'n':>4}  {'WR%':>5}  {'aw':>7}  {'al':>7}  "
+            f"{'PF':>6}  {'exp':>7}  {'std_net':>8}"
+        )
+        print(ahdr)
+        print(f"  {'-'*79}")
+
+        for period_lbl, is_2022 in [('rest', False), ('2022', True)]:
+            p_dates   = {d for d in all_dates_set if (d.year == 2022) == is_2022}
+            lv_p      = {d for d in lv_primary     if (d.year == 2022) == is_2022}
+            n_all_p   = len(p_dates)
+            n_lv_p    = len(lv_p)
+            lv_pct_p  = n_lv_p / n_all_p * 100 if n_all_p else float('nan')
+            atr_lv_p  = (float(daily_atr_s.loc[list(lv_p)].mean())
+                         if lv_p else float('nan'))
+
+            if not trades_diag.empty:
+                t_p = trades_diag[
+                    trades_diag['date'].apply(lambda d: (d.year == 2022) == is_2022)
+                ].reset_index(drop=True)
+            else:
+                t_p = pd.DataFrame()
+
+            atr_lv_ps = f"{atr_lv_p:>7.2f}" if not np.isnan(atr_lv_p) else "      —"
+
+            if t_p.empty:
+                print(f"  {period_lbl:<8}  — no trades")
+                continue
+
+            m_p     = _baseline_metrics(t_p, 250.0)
+            std_net = float(t_p['net'].std()) if len(t_p) > 1 else float('nan')
+            pf_s_p  = f"{m_p['pf']:.3f}" if m_p['pf'] != float('inf') else "  inf"
+            std_s   = f"{std_net:>8.4f}" if not np.isnan(std_net) else "       —"
+            print(
+                f"  {period_lbl:<8}  {n_lv_p:>4}  {lv_pct_p:>4.0f}%  {atr_lv_ps}  "
+                f"{m_p['n']:>4}  {m_p['wr']:>4.1f}%  "
+                f"{m_p['aw']:>+7.4f}  {m_p['al']:>+7.4f}  "
+                f"{pf_s_p:>6}  {m_p['exp']:>+7.4f}  {std_s}"
+            )
+        print()
+
+        # ── LOW_VOL comparability audit ───────────────────────────────────
+        # Question: does LOW_VOL(p50,w90) select "relatively calm within the year"
+        # (local, adaptive) or "absolutely calm across all years" (global, stable)?
+        #
+        # We expose the rolling threshold used internally by compute_daily_vol_regime
+        # and compare it year-by-year against the actual ATR of selected LOW_VOL days.
+        #
+        # Columns:
+        #   thr_mean : mean rolling-p50 threshold across the year's trading days
+        #              → if much higher in 2022, the filter adapted upward to match
+        #                the inflated vol environment, selecting days that are locally
+        #                "calm" but globally elevated
+        #   atr_lv   : mean daily ATR on selected LOW_VOL days
+        #   ratio    : atr_lv / thr_mean  (always ≤ 1.0 by construction)
+        #              → close to 1.0 = selected days are near the threshold = not very calm
+        #   p25/p50/p75 : ATR percentiles of the selected LOW_VOL days
+        #              → compare p50 across years: if 2022 p50 > rest p75, the filter
+        #                lost cross-year comparability
+        print(f"── {asset}  LOW_VOL COMPARABILITY AUDIT  (p{_PRIMARY_PCT}, w{_PRIMARY_WIN}) ───────")
+        print(f"  Is LOW_VOL selecting 'locally calm' or 'globally comparable' days?")
+        print()
+
+        # One new computation: the rolling threshold series (same formula as
+        # compute_daily_vol_regime, but we keep the threshold values, not just labels).
+        # daily_atr_s and all_dates_set are already in scope from the REGIME DIAGNOSTIC block.
+        rolling_thr = daily_atr_s.rolling(_PRIMARY_WIN, min_periods=_PRIMARY_WIN // 2).quantile(
+            _PRIMARY_PCT / 100.0
+        )
+
+        # Format helpers (local, diagnostic-only)
+        def _fw(v, w=7):
+            return f"{v:{w}.2f}" if not np.isnan(v) else (' ' * (w - 1) + '—')
+        def _fr(v):
+            return f"{v:5.3f}" if not np.isnan(v) else '    —'
+
+        cahdr = (
+            f"  {'year':<6}  {'n_lv':>4}  {'lv%':>5}  "
+            f"{'thr_mean':>8}  {'atr_lv':>7}  {'ratio':>6}  "
+            f"{'p25':>7}  {'p50':>7}  {'p75':>7}"
+        )
+        print(cahdr)
+        print(f"  {'-'*72}")
+
+        for yr in range(2018, 2027):
+            yr_dates  = {d for d in all_dates_set if d.year == yr}
+            lv_yr     = {d for d in lv_primary     if d.year == yr}
+            n_all_yr  = len(yr_dates)
+            n_lv_yr   = len(lv_yr)
+            lv_pct_yr = n_lv_yr / n_all_yr * 100 if n_all_yr else float('nan')
+
+            thr_vals = rolling_thr.loc[list(yr_dates)].dropna()
+            thr_mean = float(thr_vals.mean()) if len(thr_vals) else float('nan')
+
+            if lv_yr:
+                atr_lv_vals = daily_atr_s.loc[list(lv_yr)]
+                atr_lv_m    = float(atr_lv_vals.mean())
+                p25         = float(atr_lv_vals.quantile(0.25))
+                p50         = float(atr_lv_vals.quantile(0.50))
+                p75         = float(atr_lv_vals.quantile(0.75))
+                ratio       = (atr_lv_m / thr_mean
+                               if not np.isnan(thr_mean) and thr_mean > 0
+                               else float('nan'))
+            else:
+                atr_lv_m = p25 = p50 = p75 = ratio = float('nan')
+
+            marker = "  ◄" if yr == 2022 else ""
+            print(
+                f"  {yr:<6}  {n_lv_yr:>4}  {lv_pct_yr:>4.0f}%  "
+                f"{_fw(thr_mean, 8)}  {_fw(atr_lv_m)}  {_fr(ratio)}  "
+                f"{_fw(p25)}  {_fw(p50)}  {_fw(p75)}{marker}"
+            )
+        print()
+
+        # Aggregate: rest vs 2022 — pool all LOW_VOL days for each group
+        # This directly answers: "is 2022 p50 above rest p75?"
+        print(f"  Aggregate: rest vs 2022  (pooled LOW_VOL days)")
+        aagg_hdr = (
+            f"  {'period':<8}  {'n_lv':>4}  {'lv%':>5}  "
+            f"{'thr_mean':>8}  {'atr_lv':>7}  {'ratio':>6}  "
+            f"{'p25':>7}  {'p50':>7}  {'p75':>7}"
+        )
+        print(aagg_hdr)
+        print(f"  {'-'*72}")
+
+        for period_lbl, is_2022 in [('rest', False), ('2022', True)]:
+            p_dates  = {d for d in all_dates_set if (d.year == 2022) == is_2022}
+            lv_p     = {d for d in lv_primary     if (d.year == 2022) == is_2022}
+            n_all_p  = len(p_dates)
+            n_lv_p   = len(lv_p)
+            lv_pct_p = n_lv_p / n_all_p * 100 if n_all_p else float('nan')
+
+            thr_p_vals = rolling_thr.loc[list(p_dates)].dropna()
+            thr_p_mean = float(thr_p_vals.mean()) if len(thr_p_vals) else float('nan')
+
+            if lv_p:
+                atr_p_vals = daily_atr_s.loc[list(lv_p)]
+                atr_p_m    = float(atr_p_vals.mean())
+                pp25       = float(atr_p_vals.quantile(0.25))
+                pp50       = float(atr_p_vals.quantile(0.50))
+                pp75       = float(atr_p_vals.quantile(0.75))
+                ratio_p    = (atr_p_m / thr_p_mean
+                              if not np.isnan(thr_p_mean) and thr_p_mean > 0
+                              else float('nan'))
+            else:
+                atr_p_m = pp25 = pp50 = pp75 = ratio_p = float('nan')
+
+            print(
+                f"  {period_lbl:<8}  {n_lv_p:>4}  {lv_pct_p:>4.0f}%  "
+                f"{_fw(thr_p_mean, 8)}  {_fw(atr_p_m)}  {_fr(ratio_p)}  "
+                f"{_fw(pp25)}  {_fw(pp50)}  {_fw(pp75)}"
+            )
+        print()
+
+        # ── Absolute-vol guardrail test ───────────────────────────────────
+        # Causal test: does a simple hard ATR cap on top of LOW_VOL(p50,w90)
+        # recover cross-year comparability without destroying good years?
+        #
+        # Cap thresholds are derived directly from the comparability audit above
+        # — no new parameter search, no arbitrary tuning:
+        #
+        #   cap_lenient = p75 of ATR on LOW_VOL days from non-2022 years
+        #   cap_strict  = p50 of ATR on LOW_VOL days from non-2022 years
+        #
+        # These are the exact percentiles already visible in the audit aggregate
+        # table (rest row).  Days in lv_primary whose ATR exceeds the cap are
+        # dropped.  The question is whether 2022 falls outside this range while
+        # good years are preserved.
+        lv_rest     = frozenset(d for d in lv_primary if d.year != 2022)
+        atr_rest_s  = daily_atr_s.loc[list(lv_rest)]
+        cap_lenient = float(atr_rest_s.quantile(0.75))
+        cap_strict  = float(atr_rest_s.quantile(0.50))
+
+        lv_cap_len = frozenset(d for d in lv_primary if daily_atr_s.loc[d] <= cap_lenient)
+        lv_cap_str = frozenset(d for d in lv_primary if daily_atr_s.loc[d] <= cap_strict)
+
+        print(f"── {asset}  ABSOLUTE-VOL GUARDRAIL TEST ─────────────────────────────")
+        print(f"  Base filter : LOW_VOL (p{_PRIMARY_PCT}, w{_PRIMARY_WIN})  +  {wlbl}")
+        print(f"  cap_lenient : ATR ≤ {cap_lenient:.2f}  [p75 of non-2022 LOW_VOL days]"
+              f"  n={len(lv_cap_len)}")
+        print(f"  cap_strict  : ATR ≤ {cap_strict:.2f}  [p50 of non-2022 LOW_VOL days]"
+              f"  n={len(lv_cap_str)}")
+        print()
+
+        gvars = [
+            ('PRIMARY only',                    lv_primary),
+            (f'+ cap_len {cap_lenient:.2f}',    lv_cap_len),
+            (f'+ cap_str {cap_strict:.2f}',     lv_cap_str),
+        ]
+
+        # ── FULL + TEST summary ───────────────────────────────────────────
+        ghdr = (f"  {'variant':<22}  {'per':<5}  {'n':>4}  {'WR%':>5}  "
+                f"{'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>7}")
+        print(ghdr)
+        print(f"  {'-'*73}")
+
+        for gv_lbl, inc in gvars:
+            for per_lbl, ds, de in [('FULL', None, _TRAIN_END), ('TEST', _TEST_START, None)]:
+                t = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds, date_end=de,
+                    include_dates=inc, utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m = _baseline_metrics(t, 250.0)
+                if m:
+                    pf_s = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "  inf"
+                    print(
+                        f"  {gv_lbl:<22}  {per_lbl:<5}  {m['n']:>4}  {m['wr']:>4.1f}%  "
+                        f"{pf_s:>6}  {m['exp']:>+7.4f}  "
+                        f"{m['ret_pct']:>+7.2f}%  {m['mdd']:>7.2f}%"
+                    )
+                else:
+                    print(f"  {gv_lbl:<22}  {per_lbl:<5}  — no trades")
+            print()
+
+        # ── Year-by-year compact: 3 variants side by side ─────────────────
+        print(f"  Year-by-year  (n | PF | ret%  per variant)")
+        yhdr = (
+            f"  {'year':<6}  "
+            f"│ {'prim_n':>6} {'prim_PF':>7} {'prim_ret%':>9}  "
+            f"│ {'len_n':>5} {'len_PF':>7} {'len_ret%':>9}  "
+            f"│ {'str_n':>5} {'str_PF':>7} {'str_ret%':>8}"
+        )
+        print(yhdr)
+        print(f"  {'-'*84}")
+
+        for yr in range(2018, 2027):
+            ds_y = pd.Timestamp(f'{yr}-01-01')
+            de_y = pd.Timestamp(f'{yr+1}-01-01')
+            cols = []
+            for inc in [lv_primary, lv_cap_len, lv_cap_str]:
+                t_y = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds_y, date_end=de_y,
+                    include_dates=inc, utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m_y = _baseline_metrics(t_y, 250.0)
+                if m_y:
+                    pf_y = f"{m_y['pf']:.3f}" if m_y['pf'] != float('inf') else "  inf"
+                    cols.append(f" {m_y['n']:>5} {pf_y:>7} {m_y['ret_pct']:>+8.2f}%")
+                else:
+                    cols.append(f" {'—':>5} {'—':>7} {'—':>9}")
+            marker = "  ◄" if yr == 2022 else ""
+            print(f"  {yr:<6}  │{'  │'.join(cols)}{marker}")
+        print()
+
+        # ── Aggregate rest vs 2022 ────────────────────────────────────────
+        print(f"  Aggregate: rest vs 2022")
+        aghdr = (f"  {'period':<6}  {'variant':<22}  {'n':>4}  {'WR%':>5}  "
+                 f"{'PF':>6}  {'exp':>7}  {'ret%':>7}")
+        print(aghdr)
+        print(f"  {'-'*63}")
+
+        for period_lbl, is_2022 in [('rest', False), ('2022', True)]:
+            yr_dates_p = {d for d in all_dates_set if (d.year == 2022) == is_2022}
+            for gv_lbl, inc in gvars:
+                eff_inc = frozenset(d for d in inc if d in yr_dates_p)
+                t_agg = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, include_dates=eff_inc,
+                    utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m_agg = _baseline_metrics(t_agg, 250.0)
+                if m_agg:
+                    pf_s = f"{m_agg['pf']:.3f}" if m_agg['pf'] != float('inf') else "  inf"
+                    print(
+                        f"  {period_lbl:<6}  {gv_lbl:<22}  {m_agg['n']:>4}  "
+                        f"{m_agg['wr']:>4.1f}%  {pf_s:>6}  "
+                        f"{m_agg['exp']:>+7.4f}  {m_agg['ret_pct']:>+7.2f}%"
+                    )
+                else:
+                    print(f"  {period_lbl:<6}  {gv_lbl:<22}  — no trades")
+            print()
+
 
 if __name__ == '__main__':
     main()
