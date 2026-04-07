@@ -1544,6 +1544,95 @@ def main() -> None:
                 print(f"  {yr:<6}  │{'  │'.join(cols)}{marker}")
             print()
 
+        # ── Final refined hypothesis consolidation ────────────────────────
+        # One block per asset at the end of the loop.
+        # Compares primary base vs refined final using variables already in scope.
+        #
+        # US500 refined: lv_cap_len  (ATR <= cap_lenient ≈ 1.45)
+        # USTEC refined: lv_mfe      (roll_mfe(N=20, shift=1) > 1.0)
+        if asset == 'US500':
+            refined_inc  = lv_cap_len
+            refined_desc = f'LOW_VOL(p{_PRIMARY_PCT},w{_PRIMARY_WIN}) + ATR<=1.45  [guardrail lenient]'
+            base_desc    = f'LOW_VOL(p{_PRIMARY_PCT},w{_PRIMARY_WIN})'
+        elif asset == 'USTEC':
+            refined_inc  = lv_mfe
+            refined_desc = f'LOW_VOL(p{_PRIMARY_PCT},w{_PRIMARY_WIN}) + roll_mfe(N=20)>1.0'
+            base_desc    = f'LOW_VOL(p{_PRIMARY_PCT},w{_PRIMARY_WIN})'
+        else:
+            continue
+
+        cvars = [
+            ('primary base',  lv_primary,  base_desc),
+            ('refined final', refined_inc, refined_desc),
+        ]
+
+        print(f"{'═'*65}")
+        print(f"  FINAL REFINED HYPOTHESIS — {asset}")
+        print(f"{'═'*65}")
+        print(f"  Window  : {wlbl}")
+        print(f"  Base    : {base_desc}")
+        print(f"  Refined : {refined_desc}")
+        print(f"  n_base={len(lv_primary)}  n_refined={len(refined_inc)}"
+              f"  (kept {len(refined_inc)/len(lv_primary)*100:.0f}% of eligible days)")
+        print()
+
+        # FULL + TEST summary — all metrics
+        fhdr = (f"  {'variant':<16}  {'per':<5}  {'n':>4}  {'WR%':>5}  "
+                f"{'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>7}")
+        print(fhdr)
+        print(f"  {'-'*67}")
+
+        for cv_lbl, inc, _ in cvars:
+            for per_lbl, ds, de in [('FULL', None, _TRAIN_END), ('TEST', _TEST_START, None)]:
+                t = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds, date_end=de,
+                    include_dates=inc, utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m = _baseline_metrics(t, 250.0)
+                if m:
+                    pf_s = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "  inf"
+                    print(
+                        f"  {cv_lbl:<16}  {per_lbl:<5}  {m['n']:>4}  {m['wr']:>4.1f}%  "
+                        f"{pf_s:>6}  {m['exp']:>+7.4f}  "
+                        f"{m['ret_pct']:>+7.2f}%  {m['mdd']:>7.2f}%"
+                    )
+                else:
+                    print(f"  {cv_lbl:<16}  {per_lbl:<5}  — no trades")
+            print()
+
+        # Year-by-year: primary base vs refined final
+        print(f"  Year-by-year  (n | PF | ret%)")
+        fyhdr = (
+            f"  {'year':<6}  "
+            f"│ {'base_n':>6}  {'base_PF':>7}  {'base_ret%':>9}  "
+            f"│ {'ref_n':>5}  {'ref_PF':>7}  {'ref_ret%':>8}"
+        )
+        print(fyhdr)
+        print(f"  {'-'*64}")
+
+        for yr in range(2018, 2027):
+            ds_y = pd.Timestamp(f'{yr}-01-01')
+            de_y = pd.Timestamp(f'{yr+1}-01-01')
+            yr_cols = []
+            for inc in [lv_primary, refined_inc]:
+                t_y = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds_y, date_end=de_y,
+                    include_dates=inc, utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m_y = _baseline_metrics(t_y, 250.0)
+                if m_y:
+                    pf_y = f"{m_y['pf']:.3f}" if m_y['pf'] != float('inf') else "  inf"
+                    yr_cols.append(f" {m_y['n']:>5}  {pf_y:>7}  {m_y['ret_pct']:>+8.2f}%")
+                else:
+                    yr_cols.append(f" {'—':>5}  {'—':>7}  {'—':>9}")
+            marker = "  ◄ BAD" if yr == 2022 else ""
+            print(f"  {yr:<6}  │{'  │'.join(yr_cols)}{marker}")
+        print()
+
 
 if __name__ == '__main__':
     main()
