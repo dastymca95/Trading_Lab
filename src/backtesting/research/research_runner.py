@@ -34,6 +34,7 @@ Next steps (NOT implemented here)
   - This file is the skeleton; each hypothesis gets its own function here.
 """
 
+import datetime
 import os
 import sys
 
@@ -81,6 +82,67 @@ BASELINES = [
     {'name': 'EU_OPEN_LONG', 'session': 'EU_OPEN', 'direction': 1},
     {'name': 'US_MID_LONG',  'session': 'US_MID',  'direction': 1},
 ]
+
+# ─── FOMC decision dates ─────────────────────────────────────────────────────
+# FOMC rate decisions typically land at 14:00 ET = 19:00 UTC (winter) /
+# 18:00 UTC (summer) — inside the US_MID window (16:00–19:59 UTC).
+# NFP/CPI/ISM fall at 13:30–15:00 UTC (US_PRE / US_OPEN) — outside US_MID.
+# This makes FOMC the only major scheduled catalyst within US_MID.
+_FOMC_DATE_STRS = [
+    # 2018
+    '2018-01-31','2018-03-21','2018-05-02','2018-06-13',
+    '2018-08-01','2018-09-26','2018-11-08','2018-12-19',
+    # 2019
+    '2019-01-30','2019-03-20','2019-05-01','2019-06-19',
+    '2019-07-31','2019-09-18','2019-10-30','2019-12-11',
+    # 2020 (includes Mar emergency cuts)
+    '2020-01-29','2020-03-03','2020-03-15','2020-04-29',
+    '2020-06-10','2020-07-29','2020-09-16','2020-11-05','2020-12-16',
+    # 2021
+    '2021-01-27','2021-03-17','2021-04-28','2021-06-16',
+    '2021-07-28','2021-09-22','2021-11-03','2021-12-15',
+    # 2022
+    '2022-01-26','2022-03-16','2022-05-04','2022-06-15',
+    '2022-07-27','2022-09-21','2022-11-02','2022-12-14',
+    # 2023
+    '2023-02-01','2023-03-22','2023-05-03','2023-06-14',
+    '2023-07-26','2023-09-20','2023-11-01','2023-12-13',
+    # 2024
+    '2024-01-31','2024-03-20','2024-05-01','2024-06-12',
+    '2024-07-31','2024-09-18','2024-11-07','2024-12-18',
+    # 2025
+    '2025-01-29','2025-03-19','2025-05-07','2025-06-18',
+    '2025-07-30','2025-09-17','2025-10-29','2025-12-10',
+    # 2026 (confirmed through dataset end)
+    '2026-01-28','2026-03-18',
+]
+_FOMC_DATES = frozenset(
+    datetime.date.fromisoformat(d) for d in _FOMC_DATE_STRS
+)
+
+
+# ─── Volatility regime ────────────────────────────────────────────────────────
+
+def compute_daily_vol_regime(df: pd.DataFrame, window: int = 60) -> pd.Series:
+    """
+    Classify each trading date as HIGH_VOL or LOW_VOL.
+
+    Method: daily ATR = mean of bar-level atr14 values per day.
+    Regime = HIGH_VOL if daily_atr > rolling median over `window` days,
+             LOW_VOL otherwise.
+
+    Uses atr14 already computed by load_price_data() — no extra data needed.
+
+    Returns
+    -------
+    pd.Series indexed by datetime.date, values 'HIGH_VOL' or 'LOW_VOL'.
+    """
+    daily_atr = df.groupby('date')['atr14'].mean()
+    rolling_med = daily_atr.rolling(window, min_periods=window // 2).median()
+    regime = pd.Series('LOW_VOL', index=daily_atr.index, dtype=object)
+    regime[daily_atr > rolling_med] = 'HIGH_VOL'
+    return regime
+
 
 # ─── Session return baseline ──────────────────────────────────────────────────
 
@@ -146,6 +208,8 @@ def run_fixed_window_baseline(
     cap_start: float = 250.0,
     date_start: pd.Timestamp = None,
     date_end: pd.Timestamp = None,
+    include_dates=None,
+    exclude_dates=None,
 ) -> pd.DataFrame:
     """
     Simulate a fixed-window session trade: enter at session open, exit at
@@ -156,14 +220,16 @@ def run_fixed_window_baseline(
 
     Parameters
     ----------
-    df        : labeled DataFrame (must have session_label + time_utc columns).
-    session   : session label to trade (e.g. 'EU_OPEN').
-    direction : 1 = LONG, -1 = SHORT.
-    sp        : spread in price points.
-    lots      : lot size (use ml = minimum lot for conservative baseline).
-    cs        : contract size (value per point per lot).
-    cap_start : starting capital for this asset slice.
+    df            : labeled DataFrame (must have session_label + time_utc columns).
+    session       : session label to trade (e.g. 'EU_OPEN').
+    direction     : 1 = LONG, -1 = SHORT.
+    sp            : spread in price points.
+    lots          : lot size (use ml = minimum lot for conservative baseline).
+    cs            : contract size (value per point per lot).
+    cap_start     : starting capital for this asset slice.
     date_start, date_end : optional date range filter (inclusive / exclusive).
+    include_dates : optional set/frozenset of datetime.date — keep only these dates.
+    exclude_dates : optional set/frozenset of datetime.date — skip these dates.
 
     Returns
     -------
@@ -178,6 +244,10 @@ def run_fixed_window_baseline(
         daily = daily[pd.to_datetime(daily['date']) >= date_start]
     if date_end is not None:
         daily = daily[pd.to_datetime(daily['date']) < date_end]
+    if include_dates is not None:
+        daily = daily[daily['date'].isin(include_dates)]
+    if exclude_dates is not None:
+        daily = daily[~daily['date'].isin(exclude_dates)]
     daily = daily.reset_index(drop=True)
 
     cap  = cap_start
@@ -322,7 +392,59 @@ def main() -> None:
                 _print_baseline_report(m, f"{bl['name']} | {period}")
             print()
 
-    print("✅  Research baseline completo.")
+    print("\n✅  Research baseline completo.")
+
+    # ── US_MID_LONG conditioning ──────────────────────────────────────────────
+    print("\n" + "═"*65)
+    print("  US_MID_LONG — conditioning (TEST only)")
+    print("═"*65)
+    print("  Variants: baseline | HIGH_VOL | LOW_VOL | NO_FOMC | HIGH_VOL+NO_FOMC")
+    print(f"  FOMC dates in set: {len(_FOMC_DATES)}")
+    print(f"  Vol-regime window: 60 trading days (atr14 daily mean)\n")
+
+    for asset in RESEARCH_ASSETS:
+        ap = ASSET_COST_PARAMS.get(asset)
+        if ap is None:
+            continue
+        digits = ASSET_DIGITS.get(asset, 2)
+        result = load_price_data(asset, DATA_DIR, digits)
+        if result[0] is None:
+            continue
+        df, _lr, _vm, _qc = result
+        df = label_sessions(df, MT5_TZ)
+
+        # Compute vol regime for this asset (full history for stable rolling median)
+        regime = compute_daily_vol_regime(df, window=60)
+        high_dates = frozenset(regime[regime == 'HIGH_VOL'].index)
+        low_dates  = frozenset(regime[regime == 'LOW_VOL'].index)
+
+        print(f"── {asset}  (lots={ap['ml']}, sp={ap['sp']}) ──────────────────")
+
+        variants = [
+            ('baseline',           None,       None),
+            ('HIGH_VOL',           high_dates, None),
+            ('LOW_VOL',            low_dates,  None),
+            ('NO_FOMC',            None,       _FOMC_DATES),
+            ('HIGH_VOL+NO_FOMC',   high_dates, _FOMC_DATES),
+        ]
+
+        for vname, inc, exc in variants:
+            trades = run_fixed_window_baseline(
+                df,
+                session       = 'US_MID',
+                direction     = 1,
+                sp            = ap['sp'],
+                lots          = ap['ml'],
+                cs            = ap['cs'],
+                cap_start     = 250.0,
+                date_start    = _TEST_START,
+                date_end      = None,
+                include_dates = inc,
+                exclude_dates = exc,
+            )
+            m = _baseline_metrics(trades, 250.0)
+            _print_baseline_report(m, f"US_MID_LONG | {vname:<20s} | TEST")
+        print()
 
 
 if __name__ == '__main__':
