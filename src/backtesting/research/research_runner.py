@@ -1461,6 +1461,89 @@ def main() -> None:
                 print(f"  {yr:<6}  │{'  │'.join(cols)}{marker}")
             print()
 
+            # ── roll_mfe threshold sensitivity test ───────────────────────────
+            # qual_s['mfe_roll'] already computed above (N=20, shift(1), no look-ahead).
+            # Test thresholds: 1.0 (reference), 1.1, 1.2.
+            # Question: does raising the bar further improve 2022 without
+            # materially destroying 2025 or collapsing TEST n?
+            thr_variants = [
+                ('PRIMARY only',        lv_primary),
+                ('roll_mfe > 1.0 [ref]', frozenset(d for d in lv_primary
+                    if d in frozenset(qual_s.loc[qual_s['mfe_roll'] > 1.0, 'date']))),
+                ('roll_mfe > 1.1',       frozenset(d for d in lv_primary
+                    if d in frozenset(qual_s.loc[qual_s['mfe_roll'] > 1.1, 'date']))),
+                ('roll_mfe > 1.2',       frozenset(d for d in lv_primary
+                    if d in frozenset(qual_s.loc[qual_s['mfe_roll'] > 1.2, 'date']))),
+            ]
+
+            print(f"── USTEC  roll_mfe THRESHOLD SENSITIVITY  (N={N_ROLL}, shift=1) ────────")
+            for tv_lbl, tv_inc in thr_variants:
+                print(f"  {tv_lbl:<26}  total eligible n={len(tv_inc)}")
+            print()
+
+            # FULL + TEST summary — compact single-line per variant
+            shdr = (
+                f"  {'variant':<26}  "
+                f"{'FL_n':>5}  {'FL_PF':>6}  {'FL_ret%':>7}  {'FL_MDD%':>7}  "
+                f"{'TS_n':>5}  {'TS_PF':>6}  {'TS_ret%':>7}"
+            )
+            print(shdr)
+            print(f"  {'-'*82}")
+
+            for tv_lbl, tv_inc in thr_variants:
+                row = []
+                for ds, de in [(None, _TRAIN_END), (_TEST_START, None)]:
+                    t = run_fixed_window_baseline(
+                        df, session='US_MID', direction=1,
+                        sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                        cap_start=250.0, date_start=ds, date_end=de,
+                        include_dates=tv_inc, utc_hour_from=hfrom, utc_hour_to=hto,
+                    )
+                    m = _baseline_metrics(t, 250.0)
+                    if m:
+                        pf_s = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "  inf"
+                        if ds is None:   # FULL
+                            row.append(f"{m['n']:>5}  {pf_s:>6}  {m['ret_pct']:>+6.2f}%  {m['mdd']:>7.2f}%")
+                        else:            # TEST
+                            row.append(f"{m['n']:>5}  {pf_s:>6}  {m['ret_pct']:>+6.2f}%")
+                    else:
+                        row.append("    —      —        —       —" if ds is None else "    —      —        —")
+                print(f"  {tv_lbl:<26}  {'  '.join(row)}")
+            print()
+
+            # Selected years: 2022 / 2023 (control) / 2025
+            print(f"  Year breakdown  (n | PF | ret%)")
+            yshdr = (
+                f"  {'year':<6}  "
+                f"│ {'prim_n':>6} {'prim_PF':>7} {'prim_ret%':>9}  "
+                f"│ {'1.0_n':>5} {'1.0_PF':>7} {'1.0_ret%':>9}  "
+                f"│ {'1.1_n':>5} {'1.1_PF':>7} {'1.1_ret%':>9}  "
+                f"│ {'1.2_n':>5} {'1.2_PF':>7} {'1.2_ret%':>8}"
+            )
+            print(yshdr)
+            print(f"  {'-'*106}")
+
+            for yr in [2022, 2023, 2025]:
+                ds_y = pd.Timestamp(f'{yr}-01-01')
+                de_y = pd.Timestamp(f'{yr+1}-01-01')
+                cols = []
+                for _, tv_inc in thr_variants:
+                    t_y = run_fixed_window_baseline(
+                        df, session='US_MID', direction=1,
+                        sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                        cap_start=250.0, date_start=ds_y, date_end=de_y,
+                        include_dates=tv_inc, utc_hour_from=hfrom, utc_hour_to=hto,
+                    )
+                    m_y = _baseline_metrics(t_y, 250.0)
+                    if m_y:
+                        pf_y = f"{m_y['pf']:.3f}" if m_y['pf'] != float('inf') else "  inf"
+                        cols.append(f" {m_y['n']:>5} {pf_y:>7} {m_y['ret_pct']:>+8.2f}%")
+                    else:
+                        cols.append(f" {'—':>5} {'—':>7} {'—':>9}")
+                marker = "  ◄ BAD" if yr == 2022 else ""
+                print(f"  {yr:<6}  │{'  │'.join(cols)}{marker}")
+            print()
+
 
 if __name__ == '__main__':
     main()
