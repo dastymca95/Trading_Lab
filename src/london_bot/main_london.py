@@ -37,7 +37,7 @@ from src.london_bot.risk_manager_london import (
 )
 from src.london_bot.pnl_tracker_london import log_pnl_summary
 from src.london_bot.manual_test import force_demo_trade
-from src.london_bot.parity_logger import ensure_parity_csv, write_parity_row
+from src.london_bot.parity_logger import ensure_parity_csv, write_parity_row, write_parity_fill
 from src.core.execution import ExecutionDecision
 from src.core.position import PositionState
 from src.core.signal import Signal
@@ -399,6 +399,21 @@ def main() -> None:
                                     state_file=config["paths"]["state_file"],
                                     logger=log,
                                 )
+
+                                if config["parity"]["enabled"]:
+                                    write_parity_fill(
+                                        parity_file=config["paths"]["parity_file"],
+                                        symbol=symbol,
+                                        signal_hour=current_hour,
+                                        mt5_time=mt5_now,
+                                        ticket=pos.ticket,
+                                        fill_price=pos.real_entry_price,
+                                        entry_slippage_pts=pos.slippage,
+                                        be_level=pos.be_level,
+                                        initial_sl=pos.sl,
+                                        atr_signal=pos.atr,
+                                        execution_ms=pos.exec_ms,
+                                    )
 
 
                     else:

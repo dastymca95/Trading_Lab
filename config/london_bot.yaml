@@ -25,6 +25,12 @@ audit:
     - pnl_real
     - pnl_backtest_approx
     - exit_reason
+    - ticket
+    - be_level
+    - be_hit
+    - best_price
+    - close_price
+    - close_reason_detail
 
 assets:
   XAUUSD:

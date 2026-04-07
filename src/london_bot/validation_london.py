@@ -74,6 +74,16 @@ def find_exit_deals(
         return []
 
 
+def _classify_close_reason(position: PositionState, close_price: float) -> str:
+    """Clasifica el tipo de cierre según el estado del trailing/BE."""
+    tol = 10 ** (-position.digits)
+    if position.breakeven_hit:
+        if abs(close_price - position.be_level) <= tol:
+            return "SL_BE"
+        return "SL_TRAILING"
+    return "SL_INITIAL"
+
+
 def audit_closed_position(
     position: PositionState,
     exit_reason: str,
@@ -145,6 +155,12 @@ def audit_closed_position(
             "pnl_real": round(pnl_real, 2),
             "pnl_backtest_approx": round(pnl_backtest_approx, 2),
             "exit_reason": exit_reason,
+            "ticket": position.ticket,
+            "be_level": position.be_level,
+            "be_hit": position.breakeven_hit,
+            "best_price": position.best_price,
+            "close_price": close_price,
+            "close_reason_detail": _classify_close_reason(position, close_price),
         }
 
         audit_path = Path(audit_file)
