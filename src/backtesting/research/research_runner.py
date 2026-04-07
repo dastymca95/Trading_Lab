@@ -162,7 +162,12 @@ def compute_daily_vol_regime(
 
 # ─── Session return baseline ──────────────────────────────────────────────────
 
-def session_return_stats(df: pd.DataFrame, session: str) -> pd.DataFrame:
+def session_return_stats(
+    df: pd.DataFrame,
+    session: str,
+    utc_hour_from: int = None,
+    utc_hour_to: int = None,
+) -> pd.DataFrame:
     """
     For each calendar day, compute the session's net price movement:
       open-of-first-session-bar  →  close-of-last-session-bar
@@ -172,9 +177,19 @@ def session_return_stats(df: pd.DataFrame, session: str) -> pd.DataFrame:
 
     This is the raw directional bias of the session — no entry logic yet.
     A bull% far from 50% is the signal that a session *might* have edge.
+
+    Parameters
+    ----------
+    utc_hour_from : int or None. If set, only bars with time_utc.hour >= value.
+    utc_hour_to   : int or None. If set, only bars with time_utc.hour <= value.
+    Both default to None (full session, unchanged behaviour).
     """
     mask = df['session_label'] == session
     sub  = df[mask].copy()
+    if utc_hour_from is not None:
+        sub = sub[sub['time_utc'].dt.hour >= utc_hour_from]
+    if utc_hour_to is not None:
+        sub = sub[sub['time_utc'].dt.hour <= utc_hour_to]
     if sub.empty:
         return pd.DataFrame()
 
@@ -226,6 +241,8 @@ def run_fixed_window_baseline(
     date_end: pd.Timestamp = None,
     include_dates=None,
     exclude_dates=None,
+    utc_hour_from: int = None,
+    utc_hour_to: int = None,
 ) -> pd.DataFrame:
     """
     Simulate a fixed-window session trade: enter at session open, exit at
@@ -246,13 +263,16 @@ def run_fixed_window_baseline(
     date_start, date_end : optional date range filter (inclusive / exclusive).
     include_dates : optional set/frozenset of datetime.date — keep only these dates.
     exclude_dates : optional set/frozenset of datetime.date — skip these dates.
+    utc_hour_from, utc_hour_to : optional intra-session UTC hour bounds (inclusive).
 
     Returns
     -------
     DataFrame of trades:
       date, entry, exit, gross, cost, net, result ('WIN'/'LOSS'/'BE'), cap
     """
-    daily = session_return_stats(df, session)
+    daily = session_return_stats(df, session,
+                                 utc_hour_from=utc_hour_from,
+                                 utc_hour_to=utc_hour_to)
     if daily.empty:
         return pd.DataFrame()
 
@@ -583,6 +603,43 @@ def main() -> None:
                 f"│  {n_l:>4}  {pf_l:>7}  {ret_l:>8}  {mdd_l:>8}"
             )
         print()
+
+        # ── US_MID timing refinement ─────────────────────────────────────
+        # US_MID = 16:00–19:59 UTC.  Split into two equal halves:
+        #   early (16-17h UTC) = 12:00-13:59 ET  — US midday
+        #   late  (18-19h UTC) = 14:00-15:59 ET  — US afternoon / power hour
+        # Both variants × baseline and LOW_VOL(p50,w90) × TEST only.
+        print(f"── {asset}  US_MID timing refinement (TEST) {'─'*20}")
+        thdr = (f"  {'variant':<20}  {'window':<16}  {'n':>4}  {'WR%':>5}  "
+                f"{'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>7}")
+        print(thdr)
+        print(f"  {'-'*76}")
+
+        time_windows = [
+            ('full   16-19h', None, None),
+            ('early  16-17h', 16,   17),
+            ('late   18-19h', 18,   19),
+        ]
+        for v_lbl, inc in [('baseline', None), (f'LOW_VOL p{_PRIMARY_PCT}w{_PRIMARY_WIN}', lv_primary)]:
+            for win_lbl, hfrom, hto in time_windows:
+                t = run_fixed_window_baseline(
+                    df, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=_TEST_START, date_end=None,
+                    include_dates=inc,
+                    utc_hour_from=hfrom, utc_hour_to=hto,
+                )
+                m = _baseline_metrics(t, 250.0)
+                if m:
+                    pf_s = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "  inf"
+                    print(
+                        f"  {v_lbl:<20}  {win_lbl:<16}  {m['n']:>4}  {m['wr']:>4.1f}%  "
+                        f"{pf_s:>6}  {m['exp']:>+7.4f}  "
+                        f"{m['ret_pct']:>+7.2f}%  {m['mdd']:>7.2f}%"
+                    )
+                else:
+                    print(f"  {v_lbl:<20}  {win_lbl:<16}  — no trades")
+            print()
 
 
 if __name__ == '__main__':
