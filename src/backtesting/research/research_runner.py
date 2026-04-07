@@ -1633,6 +1633,144 @@ def main() -> None:
             print(f"  {yr:<6}  │{'  │'.join(yr_cols)}{marker}")
         print()
 
+    # ══ VALIDATION SUMMARY — REFINED HYPOTHESES ══════════════════════════════
+    # Final institutional comparison: primary base vs refined final per asset.
+    # Filters reconstructed identically to main analysis — no look-ahead,
+    # same parameters, same N_ROLL.  Data reloaded fresh (same pattern as
+    # the two conditioning loops above).
+    #
+    # US500 refined : LOW_VOL(p50,w90) + ATR <= p75(non-2022 LOW_VOL days)
+    # USTEC refined : LOW_VOL(p50,w90) + roll_mfe(N=20, shift=1) > 1.0
+    print("\n" + "═"*65)
+    print("  VALIDATION SUMMARY — REFINED HYPOTHESES")
+    print("  base vs refined  |  no new tuning  |  research phase complete")
+    print("═"*65)
+
+    _KEY_YEARS = [2022, 2023, 2025, 2026]
+
+    for asset in RESEARCH_ASSETS:
+        digits    = ASSET_DIGITS.get(asset, 2)
+        result    = load_price_data(asset, DATA_DIR, digits)
+        if result[0] is None:
+            continue
+        df_v, _, _, _ = result
+        df_v = label_sessions(df_v, MT5_TZ)
+        ap   = ASSET_COST_PARAMS.get(asset)
+        if ap is None:
+            continue
+
+        # Base filter — identical to main analysis
+        regime_v  = compute_daily_vol_regime(df_v, window=_PRIMARY_WIN, percentile=_PRIMARY_PCT)
+        lv_base_v = frozenset(regime_v[regime_v == 'LOW_VOL'].index)
+        atr_s_v   = df_v.groupby('date')['atr14'].mean()
+
+        # Refined filter — reconstructed per asset
+        if asset == 'US500':
+            lv_rest_v  = frozenset(d for d in lv_base_v if d.year != 2022)
+            cap_v      = float(atr_s_v.loc[list(lv_rest_v)].quantile(0.75))
+            lv_ref_v   = frozenset(d for d in lv_base_v if atr_s_v.loc[d] <= cap_v)
+            hfrom_v, hto_v = None, None
+            wlbl_v     = 'US_MID full  16-19h UTC'
+            ref_tag    = f'+ ATR <= {cap_v:.2f}  [p75 non-2022 LOW_VOL]'
+        elif asset == 'USTEC':
+            sub_v  = df_v[df_v['session_label'] == 'US_MID'].copy()
+            sub_v  = sub_v[(sub_v['time_utc'].dt.hour >= 16) &
+                           (sub_v['time_utc'].dt.hour <= 17)]
+            sub_v  = sub_v[sub_v['date'].isin(lv_base_v)]
+            qr_v   = []
+            for d_v, g_v in sub_v.groupby('date'):
+                g_v   = g_v.sort_values('time_utc')
+                o_v   = float(g_v['open'].iloc[0])
+                mfe_v = max(float(g_v['high'].max()) - o_v, 0.0)
+                mae_v = max(o_v - float(g_v['low'].min()), 0.0)
+                qr_v.append({'date': d_v,
+                              'mfe_mae': mfe_v / mae_v if mae_v > 1.0 else float('nan')})
+            qs_v = pd.DataFrame(qr_v).sort_values('date').reset_index(drop=True)
+            qs_v['mfe_roll'] = (qs_v['mfe_mae']
+                                .shift(1).rolling(20, min_periods=10).median())
+            mfe_pass_v = frozenset(qs_v.loc[qs_v['mfe_roll'] > 1.0, 'date'])
+            lv_ref_v   = frozenset(d for d in lv_base_v if d in mfe_pass_v)
+            hfrom_v, hto_v = 16, 17
+            wlbl_v   = 'US_MID early 16-17h UTC'
+            ref_tag  = '+ roll_mfe(N=20, shift=1) > 1.0'
+        else:
+            continue
+
+        n_base_v = len(lv_base_v)
+        n_ref_v  = len(lv_ref_v)
+
+        print(f"\n  ── {asset} {'─'*50}")
+        print(f"  Window   : {wlbl_v}")
+        print(f"  Base     : LOW_VOL(p{_PRIMARY_PCT},w{_PRIMARY_WIN})")
+        print(f"  Refined  : LOW_VOL(p{_PRIMARY_PCT},w{_PRIMARY_WIN})  {ref_tag}")
+        print(f"  Retained : {n_ref_v}/{n_base_v} eligible days  "
+              f"({n_ref_v/n_base_v*100:.0f}%  FULL)  |  "
+              f"base_n={n_base_v}  ref_n={n_ref_v}")
+        print()
+
+        # FULL + TEST — all metrics
+        vhdr = (f"  {'variant':<16}  {'per':<5}  {'n':>4}  {'WR%':>5}  "
+                f"{'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>7}")
+        print(vhdr)
+        print(f"  {'-'*67}")
+
+        for v_lbl, v_inc in [('primary base', lv_base_v), ('refined final', lv_ref_v)]:
+            for per_lbl, ds, de in [('FULL', None, _TRAIN_END), ('TEST', _TEST_START, None)]:
+                t_v = run_fixed_window_baseline(
+                    df_v, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds, date_end=de,
+                    include_dates=v_inc,
+                    utc_hour_from=hfrom_v, utc_hour_to=hto_v,
+                )
+                m_v = _baseline_metrics(t_v, 250.0)
+                if m_v:
+                    pf_s = f"{m_v['pf']:.3f}" if m_v['pf'] != float('inf') else "  inf"
+                    print(
+                        f"  {v_lbl:<16}  {per_lbl:<5}  {m_v['n']:>4}  "
+                        f"{m_v['wr']:>4.1f}%  {pf_s:>6}  {m_v['exp']:>+7.4f}  "
+                        f"{m_v['ret_pct']:>+7.2f}%  {m_v['mdd']:>7.2f}%"
+                    )
+                else:
+                    print(f"  {v_lbl:<16}  {per_lbl:<5}  — no trades")
+            print()
+
+        # Key years
+        print(f"  Key years  (n | PF | ret%)")
+        kyhdr = (
+            f"  {'year':<6}  "
+            f"│ {'base_n':>6}  {'base_PF':>7}  {'base_ret%':>9}  "
+            f"│ {'ref_n':>5}  {'ref_PF':>7}  {'ref_ret%':>8}"
+        )
+        print(kyhdr)
+        print(f"  {'-'*62}")
+
+        for yr in _KEY_YEARS:
+            ds_y = pd.Timestamp(f'{yr}-01-01')
+            de_y = pd.Timestamp(f'{yr+1}-01-01')
+            ky_cols = []
+            for v_inc in [lv_base_v, lv_ref_v]:
+                t_ky = run_fixed_window_baseline(
+                    df_v, session='US_MID', direction=1,
+                    sp=ap['sp'], lots=ap['ml'], cs=ap['cs'],
+                    cap_start=250.0, date_start=ds_y, date_end=de_y,
+                    include_dates=v_inc,
+                    utc_hour_from=hfrom_v, utc_hour_to=hto_v,
+                )
+                m_ky = _baseline_metrics(t_ky, 250.0)
+                if m_ky:
+                    pf_ky = f"{m_ky['pf']:.3f}" if m_ky['pf'] != float('inf') else "  inf"
+                    ky_cols.append(f" {m_ky['n']:>5}  {pf_ky:>7}  {m_ky['ret_pct']:>+8.2f}%")
+                else:
+                    ky_cols.append(f" {'—':>5}  {'—':>7}  {'—':>9}")
+            marker = "  ◄" if yr == 2022 else ("  (small n)" if yr == 2026 else "")
+            print(f"  {yr:<6}  │{'  │'.join(ky_cols)}{marker}")
+        print()
+
+    print("═"*65)
+    print("  END OF VALIDATION SUMMARY")
+    print("═"*65)
+
 
 if __name__ == '__main__':
     main()
