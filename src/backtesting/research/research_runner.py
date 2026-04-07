@@ -123,13 +123,23 @@ _FOMC_DATES = frozenset(
 
 # ─── Volatility regime ────────────────────────────────────────────────────────
 
-def compute_daily_vol_regime(df: pd.DataFrame, window: int = 60) -> pd.Series:
+def compute_daily_vol_regime(
+    df: pd.DataFrame, window: int = 60, percentile: int = 50
+) -> pd.Series:
     """
     Classify each trading date as HIGH_VOL or LOW_VOL.
 
     Method: daily ATR = mean of bar-level atr14 values per day.
-    Regime = HIGH_VOL if daily_atr > rolling median over `window` days,
-             LOW_VOL otherwise.
+    Threshold = rolling `percentile`-th quantile over `window` days.
+    LOW_VOL  = daily_atr <= threshold  (bottom `percentile`% of days)
+    HIGH_VOL = daily_atr >  threshold
+
+    Parameters
+    ----------
+    window      : rolling lookback in trading days. Default 60.
+    percentile  : threshold quantile (0-100). Default 50 = median split,
+                  identical to prior behavior.  25 = strict (calmest 25%),
+                  75 = lax (bottom 75%).
 
     Uses atr14 already computed by load_price_data() — no extra data needed.
 
@@ -137,10 +147,12 @@ def compute_daily_vol_regime(df: pd.DataFrame, window: int = 60) -> pd.Series:
     -------
     pd.Series indexed by datetime.date, values 'HIGH_VOL' or 'LOW_VOL'.
     """
-    daily_atr = df.groupby('date')['atr14'].mean()
-    rolling_med = daily_atr.rolling(window, min_periods=window // 2).median()
+    daily_atr    = df.groupby('date')['atr14'].mean()
+    rolling_thr  = daily_atr.rolling(window, min_periods=window // 2).quantile(
+        percentile / 100.0
+    )
     regime = pd.Series('LOW_VOL', index=daily_atr.index, dtype=object)
-    regime[daily_atr > rolling_med] = 'HIGH_VOL'
+    regime[daily_atr > rolling_thr] = 'HIGH_VOL'
     return regime
 
 
@@ -444,6 +456,56 @@ def main() -> None:
             )
             m = _baseline_metrics(trades, 250.0)
             _print_baseline_report(m, f"US_MID_LONG | {vname:<20s} | TEST")
+        print()
+
+        # ── LOW_VOL robustness sweep ──────────────────────────────────────
+        # Perturbations around the current LOW_VOL definition (p50, w60).
+        # Varies percentile threshold and rolling window independently.
+        # All variants run US_MID_LONG LONG on TEST period, same costs.
+        # Compact tabular format: one line per variant for easy comparison.
+        print(f"── {asset}  LOW_VOL robustness sweep (TEST) {'─'*20}")
+        hdr = f"  {'variant':<22}  {'n':>4}  {'WR%':>5}  {'PF':>6}  {'exp':>7}  {'ret%':>7}  {'MDD%':>7}"
+        print(hdr)
+        print(f"  {'-'*67}")
+
+        rob_variants = [
+            # (label,            percentile, window)
+            ('baseline (no filt)',  None,  None),
+            ('p50 w60  [current]',  50,    60),
+            ('p25 w60  [strict]',   25,    60),
+            ('p75 w60  [lax]',      75,    60),
+            ('p50 w30  [s-window]', 50,    30),
+            ('p50 w90  [l-window]', 50,    90),
+        ]
+
+        for vname, pct, win in rob_variants:
+            if pct is None:
+                inc = None
+            else:
+                reg = compute_daily_vol_regime(df, window=win, percentile=pct)
+                inc = frozenset(reg[reg == 'LOW_VOL'].index)
+            trades = run_fixed_window_baseline(
+                df,
+                session       = 'US_MID',
+                direction     = 1,
+                sp            = ap['sp'],
+                lots          = ap['ml'],
+                cs            = ap['cs'],
+                cap_start     = 250.0,
+                date_start    = _TEST_START,
+                date_end      = None,
+                include_dates = inc,
+            )
+            m = _baseline_metrics(trades, 250.0)
+            if m:
+                pf_s = f"{m['pf']:.3f}" if m['pf'] != float('inf') else "  inf"
+                print(
+                    f"  {vname:<22}  {m['n']:>4}  {m['wr']:>4.1f}%  "
+                    f"{pf_s:>6}  {m['exp']:>+7.4f}  "
+                    f"{m['ret_pct']:>+7.2f}%  {m['mdd']:>7.2f}%"
+                )
+            else:
+                print(f"  {vname:<22}  — no trades")
         print()
 
 
