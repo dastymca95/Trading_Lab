@@ -10,7 +10,7 @@ except Exception:
 
 from backtest_config import (
     GLOBAL_RISK_PCT, COMMISSION_LOOKBACK_DAYS, AUTO_ENABLE_SYMBOL,
-    USE_LIVE_SPECS, ASSET_PARAMS_BASE, OPTIONAL_PARAMS, COMMISSION_MANUAL_RT,
+    USE_LIVE_SPECS, ASSET_PARAMS_BASE, OPTIONAL_ASSETS, OPTIONAL_PARAMS, COMMISSION_MANUAL_RT,
 )
 
 
@@ -193,8 +193,9 @@ def apply_live_specs(base_params: dict):
 
 def resolve_asset_params(data_dir):
     merged = {**ASSET_PARAMS_BASE}
-    for k, v in OPTIONAL_PARAMS.items():
-        merged[k] = v.copy()
+    for k in OPTIONAL_ASSETS:
+        if k in OPTIONAL_PARAMS:
+            merged[k] = OPTIONAL_PARAMS[k].copy()
 
     if USE_LIVE_SPECS:
         print("1. Cargando specs live desde MT5...")
