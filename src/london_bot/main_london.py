@@ -182,9 +182,12 @@ def main() -> None:
     scan_minutes = config["strategy"]["scan_minutes_after_signal"]
 
     log.info(
-        f"Bot corriendo. Señal base: vela {signal_hours}; "
-        f"escaneo minutos {scan_minutes} MT5..."
+        f"Bot corriendo | scan global: horas MT5 {signal_hours} min {scan_minutes}"
     )
+    for _sym, _p in asset_params.items():
+        log.info(
+            f"  {_sym} | active hours: {_p['hours']} | dow: {_p['dow']}"
+        )
 
     try:
         while True:

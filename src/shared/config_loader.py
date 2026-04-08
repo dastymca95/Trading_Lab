@@ -58,19 +58,19 @@ def load_module_config(module_name: str) -> Dict[str, Any]:
 def load_app_config(module_name: str, env_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Combina:
-    1) global.yaml
-    2) environments/<env>.yaml
-    3) <module_name>.yaml
+    1) global.yaml               — defaults compartidos
+    2) <module_name>.yaml        — defaults del módulo
+    3) environments/<env>.yaml   — overrides específicos del entorno (capa final)
 
-    Prioridad:
-    module > environment > global
+    Prioridad: env > module > global
+    El entorno es la capa más específica y siempre gana.
     """
     global_cfg = load_global_config()
     env_cfg = load_environment_config(env_name=env_name)
     module_cfg = load_module_config(module_name)
 
-    config = _deep_merge(global_cfg, env_cfg)
-    config = _deep_merge(config, module_cfg)
+    config = _deep_merge(global_cfg, module_cfg)   # module > global
+    config = _deep_merge(config, env_cfg)           # env > module > global
 
     config["project_root"] = str(PROJECT_ROOT)
     config["config_dir"] = str(CONFIG_DIR)
