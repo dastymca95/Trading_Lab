@@ -149,6 +149,71 @@ def simulate_trade_lifecycle(si, H, L, C, sl, ep, sp, direction, av, p):
     return xp, bars
 
 
+def _build_daily_filter(asset, df, p):
+    """
+    Returns frozenset of allowed trading dates based on regime filters,
+    or None if no filter is configured for this asset.
+
+    Filters applied (all optional, keyed in p):
+      low_vol_pct / low_vol_win  : LOW_VOL regime — daily ATR <= rolling quantile
+      atr_cap                    : hard ATR ceiling (US500 guardrail, absolute price units)
+      roll_mfe_n / roll_mfe_min  : rolling session mfe/mae median filter (USTEC quality gate)
+    """
+    lv_pct = p.get('low_vol_pct')
+    lv_win = p.get('low_vol_win')
+    if lv_pct is None or lv_win is None:
+        return None
+
+    # --- LOW_VOL base filter ---
+    daily_atr = df.groupby('date')['atr14'].mean()
+    rolling_thr = (
+        daily_atr
+        .rolling(lv_win, min_periods=lv_win // 2)
+        .quantile(lv_pct / 100.0)
+    )
+    allowed = frozenset(
+        d for d in daily_atr.index
+        if pd.notna(rolling_thr.loc[d]) and daily_atr.loc[d] <= rolling_thr.loc[d]
+    )
+
+    # --- Absolute ATR cap (US500 lenient guardrail: p75 of LOW_VOL non-2022 ≈ 1.45) ---
+    atr_cap = p.get('atr_cap')
+    if atr_cap is not None:
+        allowed = frozenset(d for d in allowed if daily_atr.loc[d] <= atr_cap)
+
+    # --- roll_mfe quality gate (USTEC: rolling median of session mfe/mae > threshold) ---
+    roll_mfe_n   = p.get('roll_mfe_n')
+    roll_mfe_min = p.get('roll_mfe_min')
+    if roll_mfe_n is not None and roll_mfe_min is not None:
+        # MT5 hours 18 + 19 = UTC 16:00–17:59 = US_MID early session (matches research_runner)
+        sess = df[df['time'].dt.hour.isin([18, 19])].copy()
+        mfe_rows = []
+        for d_s, grp in sess.groupby('date'):
+            # Only LOW_VOL days — mirrors research_runner sub_q[date.isin(lv_primary)]
+            # Rolling N=20 then counts 20 LOW_VOL sessions, not 20 calendar days
+            if d_s not in allowed:
+                continue
+            o_s = grp['open'].iloc[0]
+            mfe = grp['high'].max() - o_s
+            mae = o_s - grp['low'].min()
+            if mae > 1.0:   # minimum 1 price-unit range to avoid noise
+                mfe_rows.append({'date': d_s, 'mfe_mae': mfe / mae})
+        if mfe_rows:
+            mfe_s = pd.DataFrame(mfe_rows).sort_values('date').reset_index(drop=True)
+            mfe_s['mfe_roll'] = (
+                mfe_s['mfe_mae']
+                .shift(1)
+                .rolling(roll_mfe_n, min_periods=roll_mfe_n // 2)
+                .median()
+            )
+            mfe_pass = frozenset(
+                mfe_s.loc[mfe_s['mfe_roll'] > roll_mfe_min, 'date']
+            )
+            allowed = frozenset(d for d in allowed if d in mfe_pass)
+
+    return allowed
+
+
 def run_backtest(asset, df, lr, vm, p, cap_start,
                  date_start=None, date_end=None, label='FULL'):
     H = df['high'].values
@@ -173,6 +238,8 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
     if len(sg) == 0:
         return pd.DataFrame(), np.array([cap_start])
 
+    daily_filter = _build_daily_filter(asset, df, p)
+
     cap = cap_start
     equity = [cap]
     trades = []
@@ -188,6 +255,7 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
         sp  = dynamic_spread(sig, p)
 
         if dow not in p['dow']: continue
+        if daily_filter is not None and d not in daily_filter: continue
         if tv < vm: continue
         if ops.get(d, 0) >= 2: continue
         if pd.isna(av) or av == 0: continue
