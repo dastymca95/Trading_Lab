@@ -264,6 +264,13 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
         direction, stype = generate_signal(ep, lh, ll, cr, av, sig['open'], p)
         if direction is None: continue
 
+        # Isolated test variant: force direction when configured (e.g. USTEC LONG-only test)
+        # Signal must still exist (LRR/volume/breakout filters all apply above)
+        force_dir = p.get('force_direction')
+        if force_dir is not None and direction != force_dir:
+            stype = stype + f' [→{"LONG" if force_dir==1 else "SHORT"}]'
+            direction = force_dir
+
         sl = ep*(1-p['sl_pct']) if direction==1 else ep*(1+p['sl_pct'])
         if not (pd.isna(lh) or pd.isna(ll)):
             sl = max(sl, ll) if direction==1 else min(sl, lh)
