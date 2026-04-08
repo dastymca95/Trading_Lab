@@ -365,10 +365,31 @@ def aggregate_portfolio(all_full, all_test, cap0):
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════
 
+def _fmt_dir(p):
+    fd = p.get('force_direction')
+    if fd == 1:  return 'forced=LONG'
+    if fd == -1: return 'forced=SHORT'
+    return 'bidirectional'
+
+
+def _fmt_m(m, period, W=72):
+    """One result row: period label + key metrics."""
+    if not m:
+        return f"  {period:<6}  — no trades"
+    sh = f"{m['sharpe']:>6.3f}" if pd.notna(m.get('sharpe', float('nan'))) else "     —"
+    return (
+        f"  {period:<6}  {m['n']:>5}  {m['wr']:>5.1f}%  {m['pf']:>5.2f}  "
+        f"{m['ret']:>+7.2f}%  {m['mdd']:>7.2f}%  "
+        f"{m['aw']:>+7.2f}  {m['al']:>+7.2f}  {m['exp']:>+8.4f}  {sh}"
+    )
+
+
 def main():
-    print("╔══════════════════════════════════════════════════════════╗")
-    print("║   BACKTEST HÍBRIDO — v2 ULTRA ALIGNED                   ║")
-    print("╚══════════════════════════════════════════════════════════╝\n")
+    W = 76   # console width
+
+    print("╔" + "═"*(W-2) + "╗")
+    print("║   BACKTEST OPERATIVO — HYBRID BREAKOUT SYSTEM" + " "*(W-48) + "║")
+    print("╚" + "═"*(W-2) + "╝")
 
     _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     DATA_DIR   = os.path.join(_REPO_ROOT, "data", "backtesting")
@@ -388,10 +409,21 @@ def main():
             final_assets[asset] = p
 
     if not final_assets:
-        print("\n❌ Sin archivos de datos.")
+        print("\n  ❌ Sin archivos de datos.")
         return
 
-    print("\n2. Cargando precios...")
+    specs_mode = 'live_mt5' if USE_LIVE_SPECS else 'json/base'
+    print(f"\n  Specs      : {specs_mode}")
+    print(f"  Risk/asset : {GLOBAL_RISK_PCT:.2%}  |  Capital : ${INITIAL_PER_ASSET:.0f}/asset")
+    print(f"  Period     : full history → {TRAIN_END.date()}  /  test from {TEST_START.date()}")
+    print(f"  Assets     : {', '.join(final_assets.keys())}")
+    print(f"  Data dir   : {DATA_DIR}")
+
+    # ── Data loading ──────────────────────────────────────────────────────────
+    print(f"\n{'─'*W}")
+    print("  DATA")
+    print(f"{'─'*W}")
+
     asset_data = {}
     qc_rows = []
     warnings_rows = []
@@ -407,10 +439,21 @@ def main():
                 warnings_rows.append({'Asset':asset, 'Warning':f"Duplicados: {qc['Duplicates Removed']}"})
 
     if not asset_data:
-        print("\n❌ Sin trades / sin datos cargables.")
+        print("\n  ❌ Sin datos cargables.")
         return
 
-    print("\n3. Corriendo backtest...")
+    # ── Backtest results ──────────────────────────────────────────────────────
+    print(f"\n{'─'*W}")
+    print("  BACKTEST RESULTS")
+    print(f"{'─'*W}")
+
+    _RHDR = (
+        f"  {'':6}  {'n':>5}  {'WR%':>6}  {'PF':>5}  "
+        f"{'ret%':>8}  {'MDD%':>7}  "
+        f"{'avg_win':>7}  {'avg_loss':>8}  {'exp/trd':>8}  {'Sharpe':>6}"
+    )
+    _RSEP = f"  {'─'*72}"
+
     results_full = {}
     results_test = {}
     all_full = []
@@ -419,8 +462,6 @@ def main():
     for asset, (df, lr, vm) in asset_data.items():
         p = final_assets[asset]
         cap = INITIAL_PER_ASSET
-
-        print(f"   {asset}... ", end='', flush=True)
 
         t_f, e_f = run_backtest(asset, df, lr, vm, p, cap, None, None, 'FULL')
         m_f = calc_metrics(t_f, e_f, cap)
@@ -435,25 +476,46 @@ def main():
         if len(t_t) > 0:
             all_test.append(t_t)
 
+        comm_src = p.get('comm_source', 'base/json')
         print(
-            f"FULL {m_f.get('ret',0):+.1f}% | TEST {m_t.get('ret',0):+.1f}% | "
-            f"PF={m_f.get('pf',0)} | comm={p['comm']} ({p.get('comm_source','base/json')}) | "
-            f"risk={p['risk_pct']:.2%}"
+            f"\n  {asset}"
+            f"  │  comm={p['comm']:.2f} ({comm_src})"
+            f"  │  risk={p['risk_pct']:.2%}"
+            f"  │  hours={p['hours']}"
+            f"  │  {_fmt_dir(p)}"
         )
+        if p.get('low_vol_pct') is not None:
+            lv_tag = f"LOW_VOL(p{p['low_vol_pct']},w{p['low_vol_win']})"
+            rm_tag = (f" + roll_mfe>{p['roll_mfe_min']}" if p.get('roll_mfe_n') else "")
+            ac_tag = (f" + ATR_cap={p['atr_cap']}" if p.get('atr_cap') else "")
+            print(f"  {'':6}  filter: {lv_tag}{rm_tag}{ac_tag}")
+        print(_RSEP)
+        print(_RHDR)
+        print(_RSEP)
+        print(_fmt_m(m_f, 'FULL'))
+        print(_fmt_m(m_t, 'TEST'))
+        print(_RSEP)
 
     if not all_full:
-        print("❌ Sin trades.")
+        print("\n  ❌ Sin trades.")
         return
 
-    print("\n4. Calculando portafolio...")
+    # ── Portfolio summary ─────────────────────────────────────────────────────
     cap0 = INITIAL_PER_ASSET * len(results_full)
     all_t_full, all_t_test, pm_full, pm_test = aggregate_portfolio(all_full, all_test, cap0)
 
-    print(f"   Portfolio FULL: Ret={pm_full['ret']:+.1f}% | Sharpe={pm_full['sharpe']} | DD={pm_full['mdd']}%")
-    if pm_test:
-        print(f"   Portfolio TEST: Ret={pm_test['ret']:+.1f}% | Sharpe={pm_test['sharpe']} | DD={pm_test['mdd']}%")
+    print(f"\n{'─'*W}")
+    print(f"  PORTFOLIO  (${cap0:.0f} total  |  {len(results_full)} assets)")
+    print(f"{'─'*W}")
+    print(_RSEP)
+    print(_RHDR)
+    print(_RSEP)
+    print(_fmt_m(pm_full, 'FULL'))
+    print(_fmt_m(pm_test if pm_test else {}, 'TEST'))
+    print(_RSEP)
 
-    print("\n5. Generando Excel...")
+    # ── Excel generation ──────────────────────────────────────────────────────
+    print(f"\n  Generando Excel...", end='', flush=True)
     wb = Workbook()
     ws = wb.active
     ws.title = 'Resumen'
@@ -549,7 +611,11 @@ def main():
     write_df_sheet(wb, 'Assumptions', assumptions_df)
 
     wb.save(out_path)
-    print(f"\n✅ Excel generado: {os.path.basename(out_path)}")
+    print(f" ✓")
+    print(f"\n  {out_path}")
+    print(f"\n{'═'*W}")
+    print("  Done.")
+    print(f"{'═'*W}\n")
 
 
 if __name__ == "__main__":
