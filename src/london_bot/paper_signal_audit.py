@@ -107,6 +107,7 @@ def write_signal_audit_row(
     action_taken: str,
     block_reason: str,
     notes: str = "",
+    logger=None,
 ) -> None:
     """
     Appends one row to the signal audit CSV.
@@ -140,8 +141,9 @@ def write_signal_audit_row(
         }
         with path.open("a", newline="", encoding="utf-8") as f:
             csv.DictWriter(f, fieldnames=SIGNAL_AUDIT_COLUMNS).writerow(row)
-    except Exception:
-        pass
+    except Exception as exc:
+        if logger is not None:
+            logger.warning(f"signal audit append failed: {exc}")
 
 
 def compute_and_write_session_summary(
@@ -167,7 +169,7 @@ def compute_and_write_session_summary(
         if df.empty:
             return
 
-        df["_date"] = pd.to_datetime(df["ts_local"], errors="coerce").dt.date
+        df["_date"] = pd.to_datetime(df["ts_mt5"], errors="coerce").dt.date
         day_df = df[df["_date"] == for_date].copy()
 
         if day_df.empty:
@@ -201,11 +203,22 @@ def compute_and_write_session_summary(
 
         summary_path = Path(summary_file)
         summary_path.parent.mkdir(parents=True, exist_ok=True)
-        header = not summary_path.exists()
+        new_rows = pd.DataFrame(rows, columns=SESSION_SUMMARY_COLUMNS)
 
-        pd.DataFrame(rows, columns=SESSION_SUMMARY_COLUMNS).to_csv(
-            summary_path, mode="a", header=header, index=False,
-        )
+        if summary_path.exists():
+            existing = pd.read_csv(summary_path)
+            if not existing.empty:
+                existing["date"] = existing["date"].astype(str)
+                existing["symbol"] = existing["symbol"].astype(str)
+                new_keys = set(zip(new_rows["date"], new_rows["symbol"]))
+                existing = existing[
+                    ~existing.apply(lambda r: (str(r["date"]), str(r["symbol"])) in new_keys, axis=1)
+                ]
+            combined = pd.concat([existing, new_rows], ignore_index=True)
+        else:
+            combined = new_rows
+
+        combined.to_csv(summary_path, index=False)
 
         for r in rows:
             logger.info(

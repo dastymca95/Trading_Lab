@@ -203,6 +203,7 @@ def main() -> None:
     )
 
     last_signal_check: Dict[str, bool] = {}
+    last_out_of_window_audit_hour: Dict[str, int] = {}
     last_date = None
 
     # Contador de fallos consecutivos de tick por símbolo (detección de desconexión MT5)
@@ -240,6 +241,7 @@ def main() -> None:
                 last_date = mt5_now.date()
                 trades_today = reset_daily_trades(asset_params)
                 last_signal_check.clear()
+                last_out_of_window_audit_hour.clear()
                 daily_filters = init_daily_filters(asset_params=asset_params, logger=log)
 
                 save_state(
@@ -386,6 +388,7 @@ def main() -> None:
                             action_taken=action,
                             block_reason=reason,
                             notes=notes,
+                            logger=log,
                         )
 
                     if not config["parity"]["force_scan"] and not should_run_for_asset(current_hour, params):
@@ -510,6 +513,18 @@ def main() -> None:
                             )
                             _write_audit(_action, _reason, sig_reason=sig_reason, sig=sig)
                         else:
+                            if config["env_name"] == "paper":
+                                log.error(f"{symbol}: paper safety violation prevented order send")
+                                _write_audit(
+                                    "ORDER_BLOCKED",
+                                    "paper_safety_block",
+                                    sig_reason=sig_reason,
+                                    sig=sig,
+                                    notes="env=paper blocked order before open_position",
+                                )
+                                last_signal_check[key] = True
+                                continue
+
                             pos = open_position(
                                 symbol=sig.symbol,
                                 direction=sig.direction,
@@ -600,6 +615,8 @@ def main() -> None:
                 # ── PRIORITY 1: OUT_OF_WINDOW audit row for non-signal hours ──
                 if current_hour not in signal_hours:
                     for _sym, _p in asset_params.items():
+                        if last_out_of_window_audit_hour.get(_sym) == current_hour:
+                            continue
                         _df_s = daily_filters.get(_sym)
                         _hdf  = _p.get("low_vol_pct") is not None
                         write_signal_audit_row(
@@ -623,7 +640,9 @@ def main() -> None:
                             execution_enabled=bool(config["mode"].get("execution_enabled", False)),
                             action_taken="OUT_OF_WINDOW",
                             block_reason="out_of_window",
+                            logger=log,
                         )
+                        last_out_of_window_audit_hour[_sym] = current_hour
 
             time.sleep(config["bot"]["trailing_check_seconds"])
 
@@ -652,7 +671,7 @@ def main() -> None:
         compute_and_write_session_summary(
             audit_file=config["paths"]["signal_audit_file"],
             summary_file=config["paths"]["session_summary_file"],
-            for_date=datetime.now().date(),
+            for_date=last_date or get_mt5_now(offset_hours=config["mt5"]["offset_hours"]).date(),
             logger=log,
         )
         shutdown_mt5()
