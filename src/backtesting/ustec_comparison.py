@@ -28,7 +28,8 @@ from backtest_data   import load_price_data
 from backtest_runner import run_backtest
 from backtest_stats  import calc_metrics
 
-DATA_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATA_DIR = os.path.join(_REPO_ROOT, "data", "backtesting")
 CAP      = 250.0
 
 # ─── Shared base params ───────────────────────────────────────────────────────
