@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any
+
+if __package__ in (None, ""):
+    _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    if str(_PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(_PROJECT_ROOT))
 
 from src.shared.config_loader import load_app_config
 from src.shared.logger_setup import setup_logger
@@ -73,6 +80,11 @@ def main() -> None:
         log_dir=config["paths"]["log_dir"],
         level=config["logging"]["level"],
     )
+    log.info(
+        "Paper audit paths | signal_audit=%s | session_summary=%s",
+        config["paths"]["signal_audit_file"],
+        config["paths"]["session_summary_file"],
+    )
 
     log.info("╔════════════════════════════════════════════════════════════╗")
     log.info("║ LONDON BOT — STRUCTURED VERSION                          ║")
@@ -101,6 +113,10 @@ def main() -> None:
         )
 
     ensure_signal_audit_csv(config["paths"]["signal_audit_file"])
+    log.info(
+        "Signal audit CSV ready | file=%s",
+        config["paths"]["signal_audit_file"],
+    )
 
     if not connect_mt5(
         logger=log,
@@ -202,6 +218,52 @@ def main() -> None:
         logger=log,
     )
 
+    def _write_runtime_event_rows(event_reason: str, notes: str = "") -> None:
+        event_local = datetime.now()
+        event_mt5 = get_mt5_now(offset_hours=config["mt5"]["offset_hours"])
+
+        for symbol, params in asset_params.items():
+            df_set = daily_filters.get(symbol)
+            has_df_cfg = params.get("low_vol_pct") is not None
+
+            try:
+                spread_raw = get_spread_points(symbol)
+            except Exception:
+                spread_raw = 0.0
+
+            spread_pts = spread_raw if spread_raw and spread_raw > 0 else None
+
+            write_signal_audit_row(
+                audit_file=config["paths"]["signal_audit_file"],
+                ts_local=event_local,
+                ts_mt5=event_mt5,
+                env=config["env_name"],
+                symbol=symbol,
+                scan_hour=event_mt5.hour,
+                scan_minute=event_mt5.minute,
+                allowed_hour=event_mt5.hour in params["hours"],
+                allowed_dow=event_mt5.weekday() in params["dow"],
+                daily_filter_loaded=(not has_df_cfg) or (df_set is not None),
+                daily_filter_pass=df_set is None or event_mt5.date() in df_set,
+                volume_filter_pass=None,
+                spread_points=spread_pts,
+                force_direction_applied=False,
+                raw_signal_detected=None,
+                final_signal_direction=None,
+                state_has_open_position=symbol in open_positions,
+                execution_enabled=bool(config["mode"].get("execution_enabled", False)),
+                action_taken="RUNTIME_EVENT",
+                block_reason=event_reason,
+                notes=notes,
+                logger=log,
+            )
+
+        log.info(
+            "Signal audit event written | event=%s | file=%s",
+            event_reason,
+            config["paths"]["signal_audit_file"],
+        )
+
     last_signal_check: Dict[str, bool] = {}
     last_out_of_window_audit_hour: Dict[str, int] = {}
     last_date = None
@@ -221,6 +283,7 @@ def main() -> None:
         log.info(
             f"  {_sym} | active hours: {_p['hours']} | dow: {_p['dow']}"
         )
+    _write_runtime_event_rows("startup", notes="bot_start")
 
     try:
         while True:
@@ -667,6 +730,7 @@ def main() -> None:
             state_file=config["paths"]["state_file"],
             logger=log,
         )
+        _write_runtime_event_rows("shutdown", notes="bot_stop")
         # session summary for the current (partial) day on any shutdown
         compute_and_write_session_summary(
             audit_file=config["paths"]["signal_audit_file"],

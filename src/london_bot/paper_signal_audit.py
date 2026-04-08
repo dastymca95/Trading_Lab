@@ -143,7 +143,7 @@ def write_signal_audit_row(
             csv.DictWriter(f, fieldnames=SIGNAL_AUDIT_COLUMNS).writerow(row)
     except Exception as exc:
         if logger is not None:
-            logger.warning(f"signal audit append failed: {exc}")
+            logger.warning(f"signal audit append failed | file={audit_file} | error={exc}")
 
 
 def compute_and_write_session_summary(
@@ -184,21 +184,22 @@ def compute_and_write_session_summary(
 
         rows = []
         for symbol, grp in day_df.groupby("symbol"):
+            ops = grp[grp["action_taken"] != "RUNTIME_EVENT"]
             rows.append({
                 "date":                      for_date.isoformat(),
                 "symbol":                    symbol,
-                "total_checks":              len(grp),
-                "in_window_checks":          int((grp["action_taken"] != "OUT_OF_WINDOW").sum()),
-                "out_of_window_checks":      int((grp["action_taken"] == "OUT_OF_WINDOW").sum()),
-                "daily_filter_blocks":       int((grp["block_reason"] == "daily_filter_fail").sum()),
-                "volume_filter_blocks":      int((grp["block_reason"] == "volume_filter_fail").sum()),
-                "no_signal_count":           int(grp["block_reason"].isin(_no_sig_reasons).sum()),
-                "signal_count":              int(grp["action_taken"].isin(
+                "total_checks":              len(ops),
+                "in_window_checks":          int((ops["action_taken"] != "OUT_OF_WINDOW").sum()),
+                "out_of_window_checks":      int((ops["action_taken"] == "OUT_OF_WINDOW").sum()),
+                "daily_filter_blocks":       int((ops["block_reason"] == "daily_filter_fail").sum()),
+                "volume_filter_blocks":      int((ops["block_reason"] == "volume_filter_fail").sum()),
+                "no_signal_count":           int(ops["block_reason"].isin(_no_sig_reasons).sum()),
+                "signal_count":              int(ops["action_taken"].isin(
                                                  ["SIGNAL_ONLY", "ORDER_SENT", "ORDER_BLOCKED"]).sum()),
-                "already_open_blocks":       int((grp["block_reason"] == "already_in_position").sum()),
-                "execution_disabled_blocks": int((grp["block_reason"] == "execution_disabled").sum()),
-                "would_send_order_count":    int((grp["action_taken"] == "SIGNAL_ONLY").sum()),
-                "runtime_error_count":       int((grp["block_reason"] == "runtime_error").sum()),
+                "already_open_blocks":       int((ops["block_reason"] == "already_in_position").sum()),
+                "execution_disabled_blocks": int((ops["block_reason"] == "execution_disabled").sum()),
+                "would_send_order_count":    int((ops["action_taken"] == "SIGNAL_ONLY").sum()),
+                "runtime_error_count":       int((ops["block_reason"] == "runtime_error").sum()),
             })
 
         summary_path = Path(summary_file)
@@ -219,6 +220,7 @@ def compute_and_write_session_summary(
             combined = new_rows
 
         combined.to_csv(summary_path, index=False)
+        logger.info(f"Session summary written | file={summary_file} | date={for_date}")
 
         for r in rows:
             logger.info(
