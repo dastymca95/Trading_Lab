@@ -43,7 +43,9 @@ logging:
   save_execution_audit: true
 
 paths:
-  state_file: "data/state/paper_bot_state.json"
-  audit_file: "reports/paper/slippage_audit_paper.csv"
-  log_dir: "logs/paper_bot"
-  parity_file: "reports/paper/parity_log_paper.csv"
+  state_file:           "data/state/paper_bot_state.json"
+  audit_file:           "reports/paper/slippage_audit_paper.csv"
+  log_dir:              "logs/paper_bot"
+  parity_file:          "reports/paper/parity_log_paper.csv"
+  signal_audit_file:    "reports/paper/paper_signal_audit.csv"
+  session_summary_file: "reports/paper/paper_session_summary.csv"

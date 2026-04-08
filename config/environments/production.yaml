@@ -39,7 +39,9 @@ logging:
   save_execution_audit: true
 
 paths:
-  state_file: "data/state/london_bot_state.json"
-  audit_file: "reports/execution_audit/slippage_audit.csv"
-  log_dir: "logs/london_bot/"
-  parity_file: "reports/london_bot/parity_log.csv"
+  state_file:           "data/state/london_bot_state.json"
+  audit_file:           "reports/execution_audit/slippage_audit.csv"
+  log_dir:              "logs/london_bot/"
+  parity_file:          "reports/london_bot/parity_log.csv"
+  signal_audit_file:    "reports/london_bot/signal_audit.csv"
+  session_summary_file: "reports/london_bot/session_summary.csv"

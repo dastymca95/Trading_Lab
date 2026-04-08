@@ -11,6 +11,51 @@ from src.core.position import PositionState
 from src.shared.mt5_connector import get_positions, history_deals_get
 
 
+def check_runtime_divergence(
+    open_positions: Dict[str, PositionState],
+    asset_params: Dict[str, Any],
+    bot_magic: int,
+    logger,
+) -> List[str]:
+    """
+    Lightweight periodic check for state/MT5 divergence.
+    Called at heartbeat intervals (~hourly). Returns anomaly strings for logs.
+
+    Checks:
+    1. Position in bot state but not found in MT5 (ghost state entry).
+    2. Position in MT5 with our magic but not in bot state (ghost MT5 position).
+    """
+    anomalies: List[str] = []
+
+    # Check 1: positions we track internally but MT5 no longer has
+    for symbol, pos in list(open_positions.items()):
+        mt5_pos = get_positions(ticket=pos.ticket)
+        if not mt5_pos:
+            msg = (
+                f"⚠️  DIVERGENCE | {symbol} ticket={pos.ticket} "
+                f"IS in bot state but NOT found in MT5 positions — "
+                f"may have closed while bot was running"
+            )
+            logger.warning(msg)
+            anomalies.append(f"state_ghost:{symbol}:{pos.ticket}")
+
+    # Check 2: MT5 has positions with our magic that we don't know about
+    all_mt5 = get_positions()
+    if all_mt5:
+        known_tickets = {pos.ticket for pos in open_positions.values()}
+        for mp in all_mt5:
+            if mp.magic == bot_magic and mp.ticket not in known_tickets:
+                msg = (
+                    f"⚠️  DIVERGENCE | MT5 has open position "
+                    f"ticket={mp.ticket} symbol={mp.symbol} magic={bot_magic} "
+                    f"but NOT in bot state — state may be stale"
+                )
+                logger.warning(msg)
+                anomalies.append(f"mt5_ghost:{mp.symbol}:{mp.ticket}")
+
+    return anomalies
+
+
 def ensure_audit_csv(
     audit_file: str,
     audit_columns: List[str],

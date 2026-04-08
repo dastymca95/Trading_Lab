@@ -8,12 +8,18 @@ from typing import Dict, Any
 
 from src.shared.config_loader import load_app_config
 from src.shared.logger_setup import setup_logger
-from src.shared.mt5_connector import connect_mt5, get_account_info, get_mt5_now, get_terminal_info, shutdown_mt5, is_mt5_connected
+from src.shared.mt5_connector import connect_mt5, get_account_info, get_mt5_now, get_terminal_info, shutdown_mt5, is_mt5_connected, get_spread_points
 from src.london_bot.state_manager import load_state, save_state
 from src.london_bot.validation_london import (
     ensure_audit_csv,
     reconcile_with_mt5,
     audit_closed_position,
+    check_runtime_divergence,
+)
+from src.london_bot.paper_signal_audit import (
+    ensure_signal_audit_csv,
+    write_signal_audit_row,
+    compute_and_write_session_summary,
 )
 from src.london_bot.signal_london import check_signal
 from src.london_bot.order_manager_london import open_position
@@ -55,10 +61,12 @@ def main() -> None:
 
     # Anchor configured paths to project root — CWD-independent
     _root = config["project_root"]
-    config["paths"]["state_file"]  = os.path.join(_root, config["paths"]["state_file"])
-    config["paths"]["audit_file"]  = os.path.join(_root, config["paths"]["audit_file"])
-    config["paths"]["log_dir"]     = os.path.join(_root, config["paths"]["log_dir"])
-    config["paths"]["parity_file"] = os.path.join(_root, config["paths"]["parity_file"])
+    config["paths"]["state_file"]         = os.path.join(_root, config["paths"]["state_file"])
+    config["paths"]["audit_file"]         = os.path.join(_root, config["paths"]["audit_file"])
+    config["paths"]["log_dir"]            = os.path.join(_root, config["paths"]["log_dir"])
+    config["paths"]["parity_file"]        = os.path.join(_root, config["paths"]["parity_file"])
+    config["paths"]["signal_audit_file"]  = os.path.join(_root, config["paths"]["signal_audit_file"])
+    config["paths"]["session_summary_file"] = os.path.join(_root, config["paths"]["session_summary_file"])
 
     log = setup_logger(
         module_name="london_bot",
@@ -70,6 +78,18 @@ def main() -> None:
     log.info("║ LONDON BOT — STRUCTURED VERSION                          ║")
     log.info("╚════════════════════════════════════════════════════════════╝")
 
+    # ── PRIORITY 4: fail-safe — paper + execution_enabled must never be True ──
+    _exec_enabled = bool(config["mode"].get("execution_enabled", False))
+    _env_is_paper  = config["env_name"] == "paper"
+    if _env_is_paper and _exec_enabled:
+        log.error("╔══════════════════════════════════════════════════════════════╗")
+        log.error("║  !!  SAFETY VIOLATION  !!                                   ║")
+        log.error("║  env=paper requires execution_enabled=False                 ║")
+        log.error("║  Current config has execution_enabled=True                  ║")
+        log.error("║  Fix: set execution_enabled: false in environments/paper.yaml║")
+        log.error("╚══════════════════════════════════════════════════════════════╝")
+        return
+
     ensure_audit_csv(
         audit_file=config["paths"]["audit_file"],
         audit_columns=config["audit"]["columns"],
@@ -79,6 +99,8 @@ def main() -> None:
         ensure_parity_csv(
             parity_file=config["paths"]["parity_file"],
         )
+
+    ensure_signal_audit_csv(config["paths"]["signal_audit_file"])
 
     if not connect_mt5(
         logger=log,
@@ -145,6 +167,16 @@ def main() -> None:
 
     daily_filters = init_daily_filters(asset_params=asset_params, logger=log)
 
+    # ── PRIORITY 4: fail-safe — daily_filter build must succeed for filtered assets ──
+    for _sym, _df_set in daily_filters.items():
+        _has_filter_cfg = asset_params[_sym].get("low_vol_pct") is not None
+        if _has_filter_cfg and _df_set is None:
+            log.warning(
+                f"⚠️  FAIL-SAFE | {_sym}: daily_filter configured but NOT built "
+                f"(parquet missing?). ALL dates allowed for {_sym} — "
+                f"regime filter is inactive. Update parquet to re-enable."
+            )
+
     open_positions, trades_today = load_state(
         state_file=config["paths"]["state_file"],
         logger=log,
@@ -196,6 +228,15 @@ def main() -> None:
 
             # Nuevo día MT5
             if is_new_mt5_day(last_date, mt5_now):
+                # ── session summary for the day that just ended ───────────────
+                if last_date is not None:
+                    compute_and_write_session_summary(
+                        audit_file=config["paths"]["signal_audit_file"],
+                        summary_file=config["paths"]["session_summary_file"],
+                        for_date=last_date,
+                        logger=log,
+                    )
+
                 last_date = mt5_now.date()
                 trades_today = reset_daily_trades(asset_params)
                 last_signal_check.clear()
@@ -291,7 +332,64 @@ def main() -> None:
 
             if config["parity"]["force_scan"] or is_signal_scan_window(mt5_now, signal_hours, scan_minutes):
                 for symbol, params in asset_params.items():
+                    # ── audit context shared for this symbol/cycle ─────────────
+                    _df_set       = daily_filters.get(symbol)
+                    _has_df_cfg   = params.get("low_vol_pct") is not None
+                    _df_loaded    = (not _has_df_cfg) or (_df_set is not None)
+                    _df_pass      = _df_set is None or mt5_now.date() in _df_set
+                    _exec_en      = config["mode"].get("execution_enabled", False)
+                    _spread_raw   = get_spread_points(symbol)
+                    _spread_pts   = _spread_raw if _spread_raw and _spread_raw > 0 else None
+
+                    # map eval_decision.reason → audit block_reason
+                    _EVAL_REASON_MAP = {
+                        "weekday no permitido":                     "out_of_dow",
+                        "hora no permitida para el activo":         "out_of_hour",
+                        "máximo de trades diarios alcanzado":       "max_trades_reached",
+                        "ya existe posición abierta en este símbolo": "already_in_position",
+                    }
+
+                    # raw_signal/volume inference from check_signal reason code
+                    _VOL_PASS_TRUE  = {"lrr_fail", "no_direction", "stop_distance_zero",
+                                       "lots_zero", "ok", "ok_force_direction"}
+                    _RAW_SIG_TRUE   = {"ok", "ok_force_direction", "stop_distance_zero", "lots_zero"}
+                    _RAW_SIG_FALSE  = {"no_direction"}
+
+                    def _write_audit(action: str, reason: str,
+                                     sig_reason: str = "",
+                                     sig=None, notes: str = "") -> None:
+                        _raw = (True  if sig_reason in _RAW_SIG_TRUE
+                                else False if sig_reason in _RAW_SIG_FALSE
+                                else None)
+                        _vol = (True  if sig_reason in _VOL_PASS_TRUE
+                                else False if sig_reason == "volume_filter_fail"
+                                else None)
+                        write_signal_audit_row(
+                            audit_file=config["paths"]["signal_audit_file"],
+                            ts_local=now,
+                            ts_mt5=mt5_now,
+                            env=config["env_name"],
+                            symbol=symbol,
+                            scan_hour=current_hour,
+                            scan_minute=current_minute,
+                            allowed_hour=current_hour in params["hours"],
+                            allowed_dow=mt5_now.weekday() in params["dow"],
+                            daily_filter_loaded=_df_loaded,
+                            daily_filter_pass=_df_pass,
+                            volume_filter_pass=_vol,
+                            spread_points=_spread_pts,
+                            force_direction_applied=(sig_reason == "ok_force_direction"),
+                            raw_signal_detected=_raw,
+                            final_signal_direction=sig.direction if sig else None,
+                            state_has_open_position=symbol in open_positions,
+                            execution_enabled=bool(_exec_en),
+                            action_taken=action,
+                            block_reason=reason,
+                            notes=notes,
+                        )
+
                     if not config["parity"]["force_scan"] and not should_run_for_asset(current_hour, params):
+                        _write_audit("EVAL_BLOCKED", "out_of_hour")
                         continue
 
                     key = build_signal_key(symbol, mt5_now, current_hour)
@@ -300,6 +398,7 @@ def main() -> None:
 
                     if symbol in open_positions:
                         log.info(f"{symbol}: evaluación omitida | reason=ya existe posición abierta en este símbolo")
+                        _write_audit("POSITION_ALREADY_OPEN", "already_in_position")
                         last_signal_check[key] = True
                         continue
 
@@ -325,6 +424,10 @@ def main() -> None:
 
                     if not eval_decision.allowed:
                         log.info(f"{symbol}: evaluación omitida | reason={eval_decision.reason}")
+                        _write_audit(
+                            "EVAL_BLOCKED",
+                            _EVAL_REASON_MAP.get(eval_decision.reason, eval_decision.reason),
+                        )
 
                         if config["parity"]["enabled"]:
                             write_parity_row(
@@ -344,15 +447,22 @@ def main() -> None:
                         last_signal_check[key] = True
                         continue
 
-                    sig = check_signal(
-                        symbol=symbol,
-                        asset_params=params,
-                        signal_hour=current_hour,
-                        mt5_now=mt5_now,
-                        volume_means=volume_means,
-                        initial_capital_per_asset=config["bot"]["initial_capital_per_asset"],
-                        daily_filter=daily_filters.get(symbol),
-                    )
+                    # ── check_signal — wrapped for PRIORITY 4 runtime_error ──
+                    try:
+                        sig, sig_reason = check_signal(
+                            symbol=symbol,
+                            asset_params=params,
+                            signal_hour=current_hour,
+                            mt5_now=mt5_now,
+                            volume_means=volume_means,
+                            initial_capital_per_asset=config["bot"]["initial_capital_per_asset"],
+                            daily_filter=daily_filters.get(symbol),
+                        )
+                    except Exception as _exc:
+                        log.error(f"{symbol}: exception en check_signal: {_exc}", exc_info=True)
+                        _write_audit("RUNTIME_ERROR", "runtime_error", notes=str(_exc))
+                        last_signal_check[key] = True
+                        continue
 
                     if sig:
                         log.info(
@@ -387,6 +497,18 @@ def main() -> None:
 
                         if not exec_decision.allowed:
                             log.info(f"{symbol}: ejecución omitida | reason={exec_decision.reason}")
+                            # In paper mode this is the normal path: SIGNAL_ONLY
+                            _action = (
+                                "SIGNAL_ONLY"
+                                if exec_decision.reason == "execution disabled"
+                                else "ORDER_BLOCKED"
+                            )
+                            _reason = (
+                                "execution_disabled"
+                                if exec_decision.reason == "execution disabled"
+                                else exec_decision.reason
+                            )
+                            _write_audit(_action, _reason, sig_reason=sig_reason, sig=sig)
                         else:
                             pos = open_position(
                                 symbol=sig.symbol,
@@ -414,6 +536,8 @@ def main() -> None:
                                     logger=log,
                                 )
 
+                                _write_audit("ORDER_SENT", "", sig_reason=sig_reason, sig=sig)
+
                                 if config["parity"]["enabled"]:
                                     write_parity_fill(
                                         parity_file=config["paths"]["parity_file"],
@@ -429,10 +553,9 @@ def main() -> None:
                                         execution_ms=pos.exec_ms,
                                     )
 
-
                     else:
-
-                        log.info("— Sin señal")
+                        log.info(f"— Sin señal | reason={sig_reason}")
+                        _write_audit("NO_SIGNAL", sig_reason, sig_reason=sig_reason)
 
                         if config["parity"]["enabled"]:
                             write_parity_row(
@@ -466,6 +589,42 @@ def main() -> None:
                         "🔴 get_account_info() devolvió None — MT5 posiblemente desconectado"
                     )
 
+                # ── PRIORITY 3: runtime/state/MT5 divergence check ────────────
+                check_runtime_divergence(
+                    open_positions=open_positions,
+                    asset_params=asset_params,
+                    bot_magic=config["bot"]["magic"],
+                    logger=log,
+                )
+
+                # ── PRIORITY 1: OUT_OF_WINDOW audit row for non-signal hours ──
+                if current_hour not in signal_hours:
+                    for _sym, _p in asset_params.items():
+                        _df_s = daily_filters.get(_sym)
+                        _hdf  = _p.get("low_vol_pct") is not None
+                        write_signal_audit_row(
+                            audit_file=config["paths"]["signal_audit_file"],
+                            ts_local=now,
+                            ts_mt5=mt5_now,
+                            env=config["env_name"],
+                            symbol=_sym,
+                            scan_hour=current_hour,
+                            scan_minute=current_minute,
+                            allowed_hour=current_hour in _p["hours"],
+                            allowed_dow=mt5_now.weekday() in _p["dow"],
+                            daily_filter_loaded=(not _hdf) or (_df_s is not None),
+                            daily_filter_pass=_df_s is None or mt5_now.date() in _df_s,
+                            volume_filter_pass=None,
+                            spread_points=None,
+                            force_direction_applied=False,
+                            raw_signal_detected=None,
+                            final_signal_direction=None,
+                            state_has_open_position=_sym in open_positions,
+                            execution_enabled=bool(config["mode"].get("execution_enabled", False)),
+                            action_taken="OUT_OF_WINDOW",
+                            block_reason="out_of_window",
+                        )
+
             time.sleep(config["bot"]["trailing_check_seconds"])
 
     except KeyboardInterrupt:
@@ -487,6 +646,13 @@ def main() -> None:
             open_positions=open_positions,
             trades_today=trades_today,
             state_file=config["paths"]["state_file"],
+            logger=log,
+        )
+        # session summary for the current (partial) day on any shutdown
+        compute_and_write_session_summary(
+            audit_file=config["paths"]["signal_audit_file"],
+            summary_file=config["paths"]["session_summary_file"],
+            for_date=datetime.now().date(),
             logger=log,
         )
         shutdown_mt5()
