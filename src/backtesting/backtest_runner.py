@@ -376,7 +376,7 @@ def _fmt_m(m, period, W=72):
     """One result row: period label + key metrics."""
     if not m:
         return f"  {period:<6}  — no trades"
-    sh = f"{m['sharpe']:>6.3f}" if pd.notna(m.get('sharpe', float('nan'))) else "     —"
+    sh = f"{m['sharpe']:>7.3f}" if pd.notna(m.get('sharpe', float('nan'))) else "      —"
     return (
         f"  {period:<6}  {m['n']:>5}  {m['wr']:>5.1f}%  {m['pf']:>5.2f}  "
         f"{m['ret']:>+7.2f}%  {m['mdd']:>7.2f}%  "
@@ -449,10 +449,10 @@ def main():
 
     _RHDR = (
         f"  {'':6}  {'n':>5}  {'WR%':>6}  {'PF':>5}  "
-        f"{'ret%':>8}  {'MDD%':>7}  "
-        f"{'avg_win':>7}  {'avg_loss':>8}  {'exp/trd':>8}  {'Sharpe':>6}"
+        f"{'ret%':>8}  {'MDD%*':>7}  "
+        f"{'avg_win':>7}  {'avg_loss':>8}  {'exp/trd':>8}  {'Sharpe**':>8}"
     )
-    _RSEP = f"  {'─'*72}"
+    _RSEP = f"  {'─'*74}"
 
     results_full = {}
     results_test = {}
@@ -513,6 +513,8 @@ def main():
     print(_fmt_m(pm_full, 'FULL'))
     print(_fmt_m(pm_test if pm_test else {}, 'TEST'))
     print(_RSEP)
+    print(f"   * MDD%: trade-by-trade equity (intra-day resolution). Differs from daily_equity MDD.")
+    print(f"  ** Sharpe/Sortino: monthly PnL / initial_cap, sqrt(12). Not equity-weighted. See Assumptions.")
 
     # ── Excel generation ──────────────────────────────────────────────────────
     print(f"\n  Generando Excel...", end='', flush=True)
@@ -534,11 +536,11 @@ def main():
             'Params':json.dumps({k:p[k] for k in
                 ['sl_pct','trail_mult','risk_pct','lrr_min','hours','dow','atr_mult']},ensure_ascii=False),
             'Trades_FULL':mf.get('n',0), 'RetPct_FULL':mf.get('ret',0),
-            'PF_FULL':mf.get('pf',0), 'Sharpe_FULL':mf.get('sharpe',0),
-            'Sortino_FULL':mf.get('sortino',0), 'DDPct_FULL':mf.get('mdd',0),
+            'PF_FULL':mf.get('pf',0), 'Sharpe_cap0_FULL':mf.get('sharpe',0),
+            'Sortino_cap0_FULL':mf.get('sortino',0), 'MDD_trade_FULL':mf.get('mdd',0),
             'Trades_TEST':mt.get('n',0), 'RetPct_TEST':mt.get('ret',0),
-            'PF_TEST':mt.get('pf',0), 'Sharpe_TEST':mt.get('sharpe',0),
-            'Sortino_TEST':mt.get('sortino',0), 'DDPct_TEST':mt.get('mdd',0),
+            'PF_TEST':mt.get('pf',0), 'Sharpe_cap0_TEST':mt.get('sharpe',0),
+            'Sortino_cap0_TEST':mt.get('sortino',0), 'MDD_trade_TEST':mt.get('mdd',0),
         })
 
     res_df = pd.DataFrame(resumen_rows)
@@ -563,6 +565,11 @@ def main():
             'GlobalRiskPct': GLOBAL_RISK_PCT,
             **{k:v for k,v in pm_test.items() if k not in ['monthly','monthly_ret','equity']}
         }])], ignore_index=True)
+    port_df = port_df.rename(columns={
+        'sharpe':  'Sharpe_cap0',
+        'sortino': 'Sortino_cap0',
+        'mdd':     'MDD_trade_pct',
+    })
 
     write_df_sheet(wb, 'Portfolio',          port_df)
     write_df_sheet(wb, 'Trades_FULL',        all_t_full)
@@ -575,21 +582,27 @@ def main():
         t = all_t_full[all_t_full['Activo']==asset].copy()
         d = daily_equity(t, INITIAL_PER_ASSET)
         if len(d)>0:
-            x=d.copy(); x['Asset']=asset; eq_r.append(x[['Date','Asset','Equity','DailyPnL','ReturnPct']])
+            x=d.copy(); x['Asset']=asset
+            x=x.rename(columns={'ReturnPct':'ReturnPct_cap0'})
+            eq_r.append(x[['Date','Asset','Equity','DailyPnL','ReturnPct_cap0']])
             y=d.copy(); y['Asset']=asset; dd_r.append(y[['Date','Asset','DrawdownPct']])
             rs=rolling_sharpe(t, INITIAL_PER_ASSET)
             if len(rs)>0:
                 rs['Asset']=asset
-                rs_r.append(rs[['Date','Asset','ReturnPct','RollingSharpe']])
+                rs=rs.rename(columns={'ReturnPct':'ReturnPct_cap0'})
+                rs_r.append(rs[['Date','Asset','ReturnPct_cap0','RollingSharpe']])
 
     d_p=daily_equity(all_t_full, cap0)
     if len(d_p)>0:
-        z=d_p.copy(); z['Asset']='PORTFOLIO'; eq_r.append(z[['Date','Asset','Equity','DailyPnL','ReturnPct']])
+        z=d_p.copy(); z['Asset']='PORTFOLIO'
+        z=z.rename(columns={'ReturnPct':'ReturnPct_cap0'})
+        eq_r.append(z[['Date','Asset','Equity','DailyPnL','ReturnPct_cap0']])
         dd_r.append(z[['Date','Asset','DrawdownPct']])
         rs_p=rolling_sharpe(all_t_full,cap0)
         if len(rs_p)>0:
             rs_p['Asset']='PORTFOLIO'
-            rs_r.append(rs_p[['Date','Asset','ReturnPct','RollingSharpe']])
+            rs_p=rs_p.rename(columns={'ReturnPct':'ReturnPct_cap0'})
+            rs_r.append(rs_p[['Date','Asset','ReturnPct_cap0','RollingSharpe']])
 
     write_df_sheet(wb, 'EquityCurve_FULL',   pd.concat(eq_r,ignore_index=True) if eq_r else pd.DataFrame())
     write_df_sheet(wb, 'Drawdown_Curve',     pd.concat(dd_r,ignore_index=True) if dd_r else pd.DataFrame())
@@ -607,6 +620,24 @@ def main():
         {'Key':'Spread', 'Value':'dynamic spread from candle if available else fallback sp'},
         {'Key':'Commission', 'Value':'history -> order_check -> fallback (if live specs enabled)'},
         {'Key':'Slippage', 'Value':'not simulated randomly'},
+        # ── Methodology notes ──────────────────────────────────────────────────
+        {'Key':'Sharpe_cap0_method', 'Value':
+            'Monthly PnL / initial_cap_per_asset * 100, annualized sqrt(12). '
+            'Denominator is fixed initial capital, not equity at month start. '
+            'Consistent internally; not equity-weighted. Label: Sharpe_cap0.'},
+        {'Key':'Sortino_cap0_method', 'Value':
+            'Same monthly base as Sharpe_cap0. Downside deviation from negative months only. '
+            'Label: Sortino_cap0.'},
+        {'Key':'MDD_trade_pct', 'Value':
+            'Max drawdown from trade-by-trade equity array (one point per closed trade). '
+            'Differs from daily MDD (Drawdown_Curve sheet) when >1 trade occurs on same day.'},
+        {'Key':'DrawdownPct_daily', 'Value':
+            'Drawdown_Curve sheet: day-grouped equity = cap0 + cumsum(DailyPnL). '
+            'No floor. Lower intra-day resolution than MDD_trade_pct.'},
+        {'Key':'ReturnPct_cap0', 'Value':
+            'EquityCurve_FULL and Rolling_Sharpe sheets: DailyPnL / initial_cap * 100. '
+            'Denominator is fixed initial capital, not current equity. '
+            'Not a true daily return on equity.'},
     ])
     write_df_sheet(wb, 'Assumptions', assumptions_df)
 
