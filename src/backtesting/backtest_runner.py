@@ -273,6 +273,10 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
             stype = stype + f' [→{"LONG" if force_dir==1 else "SHORT"}]'
             direction = force_dir
 
+        # Execution degradation stress: worse fill (higher entry for LONG, lower for SHORT).
+        # entry_slippage_pts=0 by default — no effect on normal runs.
+        ep = ep + p.get('entry_slippage_pts', 0.0) * direction
+
         sl = ep*(1-p['sl_pct']) if direction==1 else ep*(1+p['sl_pct'])
         if not (pd.isna(lh) or pd.isna(ll)):
             sl = max(sl, ll) if direction==1 else min(sl, lh)
