@@ -75,6 +75,7 @@ assets:
     dow: [0, 1, 2, 3, 4]
     atr_mult: 1.5
     force_direction: 1      # forced LONG — edge validated as LONG-only in US_MID early
+    be_atr_mult: 0.75       # breakeven triggers at 0.75×ATR above entry
     low_vol_pct: 50         # LOW_VOL regime: daily_atr <= rolling_quantile(p50, w=90)
     low_vol_win: 90
     roll_mfe_n: 20          # roll_mfe gate: rolling median(mfe/mae, N=20, shift=1) > 1.0

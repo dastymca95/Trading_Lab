@@ -1,6 +1,9 @@
 
 env_name: paper
 
+strategy:
+  signal_hours_mt5: [18]   # USTEC paper: hour 18 only — suppress hour-15 scan noise
+
 mode:
   live_trading: false
   paper_trading: true

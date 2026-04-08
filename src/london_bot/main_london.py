@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import os
 import time
 from datetime import datetime
@@ -45,7 +46,12 @@ from src.core.signal import Signal
 
 
 def main() -> None:
-    config = load_app_config("london_bot")
+    parser = argparse.ArgumentParser(description="London Bot")
+    parser.add_argument("--env", default=None,
+                        help="Environment override: paper | demo | production")
+    args, _ = parser.parse_known_args()
+
+    config = load_app_config("london_bot", env_name=args.env)
 
     # Anchor configured paths to project root — CWD-independent
     _root = config["project_root"]
