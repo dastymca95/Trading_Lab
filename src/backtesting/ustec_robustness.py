@@ -36,15 +36,16 @@ W          = 86
 _LOCKED = dict(OPTIONAL_PARAMS['USTEC'])
 
 # ─── Cost scenarios ───────────────────────────────────────────────────────────
-# At 0.1 lots, cs=1: spread_cost = sp * 0.1 USD/trade
-# BASE → $0.10, 2x → $0.20, 3x → $0.30, +comm=2 → $0.20+$0.20=$0.40, etc.
+# stress_spread_mult applies to real spread_px from the MT5 parquet.
+# comm is always applied as lots * comm regardless of spread source.
+# Each scenario: (label, stress_spread_mult, comm)
 COST_SCENARIOS = [
-    ('BASE          sp=1, c=0.00',  1.0,  0.00),
-    ('2x spread     sp=2, c=0.00',  2.0,  0.00),
-    ('3x spread     sp=3, c=0.00',  3.0,  0.00),
-    ('+commission   sp=1, c=2.00',  1.0,  2.00),
-    ('Conserv.      sp=2, c=2.00',  2.0,  2.00),
-    ('Adversarial   sp=3, c=5.00',  3.0,  5.00),
+    ('BASE          x1.0, c=0.00',  1.0,  0.00),
+    ('2x spread     x2.0, c=0.00',  2.0,  0.00),
+    ('3x spread     x3.0, c=0.00',  3.0,  0.00),
+    ('+commission   x1.0, c=2.00',  1.0,  2.00),
+    ('Conserv.      x2.0, c=2.00',  2.0,  2.00),
+    ('Adversarial   x3.0, c=5.00',  3.0,  5.00),
 ]
 
 # ─── Risk % sweep ─────────────────────────────────────────────────────────────
@@ -111,8 +112,9 @@ def main():
     # A) COST SENSITIVITY
     # ═════════════════════════════════════════════════════════════════════════
     _title("A) COST SENSITIVITY")
-    print(f"  spread_cost per trade = sp × lots × cs(=1).")
-    print(f"  At 0.1 lots: BASE=$0.10, 3x=$0.30, adversarial=$0.80.")
+    print(f"  spread_cost per trade = spread_px(MT5) × stress_mult × lots.")
+    print(f"  Real MT5 spread_px is used — stress_spread_mult widens it proportionally.")
+    print(f"  comm is always applied as lots × comm (separate from spread).")
 
     for period_label, period_start in [
         ('FULL HISTORY',              None),
@@ -121,17 +123,17 @@ def main():
         _sub(period_label)
         print(_hdr())
         _sep()
-        for label, sp, comm in COST_SCENARIOS:
-            p = {**_LOCKED, 'sp': sp, 'comm': comm}
+        for label, mult, comm in COST_SCENARIOS:
+            p = {**_LOCKED, 'stress_spread_mult': mult, 'comm': comm}
             print(_row(run(p, period_start), label))
 
     # Delta vs BASE — FULL only
     _sub("DELTA vs BASE  (FULL)")
     print(f"  {'scenario':<28}  {'Δn':>4}  {'ΔPF':>6}  {'Δret%':>8}  {'ΔMDD%':>7}  {'ΔSharpe':>8}  {'Δexp':>8}")
     _sep()
-    bm = run({**_LOCKED, 'sp': COST_SCENARIOS[0][1], 'comm': COST_SCENARIOS[0][2]}, None)
-    for label, sp, comm in COST_SCENARIOS[1:]:
-        m = run({**_LOCKED, 'sp': sp, 'comm': comm}, None)
+    bm = run({**_LOCKED, 'stress_spread_mult': COST_SCENARIOS[0][1], 'comm': COST_SCENARIOS[0][2]}, None)
+    for label, mult, comm in COST_SCENARIOS[1:]:
+        m = run({**_LOCKED, 'stress_spread_mult': mult, 'comm': comm}, None)
         if not m:
             print(f"  {label:<28}  — no trades"); continue
         dsh = (

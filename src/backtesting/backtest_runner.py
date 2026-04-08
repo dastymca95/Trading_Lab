@@ -73,10 +73,11 @@ from backtest_data import validate_price_data, load_price_data
 # ═══════════════════════════════════════════════════════════════════════
 
 def dynamic_spread(sig_row, p):
+    mult = p.get('stress_spread_mult', 1.0)   # 1.0 = no stress (default)
     v = sig_row.get('spread_px', np.nan)
     if pd.notna(v) and v > 0:
-        return float(v)
-    return float(p['sp'])
+        return float(v) * mult
+    return float(p['sp']) * mult
 
 
 def generate_signal(ep, lh, ll, cr, av, sig_open, p):
