@@ -1,0 +1,46 @@
+
+env_name: paper
+
+mode:
+  live_trading: false
+  paper_trading: true
+  execution_enabled: false   # shadow only — NO real orders sent
+  shadow_mode: true
+
+mt5:
+  offset_hours: 1
+  account_alias: demo_icmarkets   # must be demo account — verify before start
+  terminal_path: "C:/Program Files/MetaTrader 5/terminal64.exe"
+
+bot:
+  magic: 20260408
+  trailing_check_seconds: 10
+  initial_capital_per_asset: 250.0
+  max_trades_per_day_per_asset: 1   # USTEC: 1 slot (hour 18) = max 1 trade/day
+
+testing:
+  force_test_trade: false
+  force_test_symbol: "USTEC"
+  force_test_direction: 1
+  force_test_return_after_open: true
+
+parity:
+  enabled: true      # always on in paper mode — needed for audit trail
+  force_scan: false
+
+execution:
+  deviation: 30
+  allowed_order_types: ["market"]
+  latency_checks_enabled: true
+
+logging:
+  level: "INFO"
+  save_trade_journal: true
+  save_market_snapshots: false
+  save_execution_audit: true
+
+paths:
+  state_file: "data/state/paper_bot_state.json"
+  audit_file: "reports/paper/slippage_audit_paper.csv"
+  log_dir: "logs/paper_bot"
+  parity_file: "reports/paper/parity_log_paper.csv"
