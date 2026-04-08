@@ -37,14 +37,23 @@ ASSET_PARAMS_BASE = {
 OPTIONAL_ASSETS = ['USTEC', 'US500', 'DE40']
 
 OPTIONAL_PARAMS = {
+    # ── USTEC — variante operativa formal ────────────────────────────────────
+    # Hipótesis: US_MID early (16-17h UTC = MT5 hora 18) + sesgo LONG
+    # Ventana: hour 18 only — excluye slot London (hora 15) para evitar contaminación
+    # Dirección: LONG forzado — edge validado en research como sesgo alcista US_MID
+    # Filtro diario: LOW_VOL(p50,w90) + roll_mfe(N=20,shift1)>1.0
+    # Engine: SL, trailing, sizing, LRR, vol filter — igual que todos los activos
     'USTEC': {'sl_pct':0.003,'trail_mult':3.0,'risk_pct':GLOBAL_RISK_PCT,'lrr_min':1.0,
-              'hours':[15,18],'dow':[0,1,2,3,4],'atr_mult':1.5,
+              'hours':[18],'dow':[0,1,2,3,4],'atr_mult':1.5,
               'comm':0.00,'cs':1,'ml':0.1,'step':0.1,'sp':1.0,'jpy':False,'digits':2,
-              'be_atr_mult':0.75},
+              'be_atr_mult':0.75,'force_direction':1,
+              'low_vol_pct':50,'low_vol_win':90,'roll_mfe_n':20,'roll_mfe_min':1.0},
     'US500': {'sl_pct':0.003,'trail_mult':3.0,'risk_pct':GLOBAL_RISK_PCT,'lrr_min':1.0,
               'hours':[15,18],'dow':[0,1,2,3,4],'atr_mult':1.5,
               'comm':0.00,'cs':1,'ml':0.1,'step':0.1,'sp':0.5,'jpy':False,'digits':2,
-              'be_atr_mult':0.75},
+              'be_atr_mult':0.75,
+              # Refined hypothesis: LOW_VOL(p50,w90) + ATR<=1.45 guardrail
+              'low_vol_pct':50,'low_vol_win':90,'atr_cap':1.45},
     'DE40':  {'sl_pct':0.003,'trail_mult':3.0,'risk_pct':GLOBAL_RISK_PCT,'lrr_min':1.0,
               'hours':[15,18],'dow':[0,1,2,3,4],'atr_mult':1.5,
               'comm':0.00,'cs':1,'ml':0.1,'step':0.1,'sp':1.0,'jpy':False,'digits':2,

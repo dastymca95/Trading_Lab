@@ -264,8 +264,9 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
         direction, stype = generate_signal(ep, lh, ll, cr, av, sig['open'], p)
         if direction is None: continue
 
-        # Isolated test variant: force direction when configured (e.g. USTEC LONG-only test)
-        # Signal must still exist (LRR/volume/breakout filters all apply above)
+        # Direction override: when force_direction is set in params, override signal direction.
+        # Signal must still exist (breakout/large-candle + LRR + volume filters all apply).
+        # Used by USTEC operational variant: edge validated as LONG-only in US_MID early.
         force_dir = p.get('force_direction')
         if force_dir is not None and direction != force_dir:
             stype = stype + f' [→{"LONG" if force_dir==1 else "SHORT"}]'
