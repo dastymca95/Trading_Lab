@@ -37,7 +37,7 @@ ASSET_PARAMS_BASE = {
 OPTIONAL_ASSETS = ['USTEC', 'US500', 'DE40']
 
 OPTIONAL_PARAMS = {
-    # ── USTEC — variante operativa formal ────────────────────────────────────
+    # ── USTEC — STATUS: LOCKED BASELINE — see BASELINE_USTEC.md ─────────────
     # Hipótesis: US_MID early (16-17h UTC = MT5 hora 18) + sesgo LONG
     # Ventana: hour 18 only — excluye slot London (hora 15) para evitar contaminación
     # Dirección: LONG forzado — edge validado en research como sesgo alcista US_MID
