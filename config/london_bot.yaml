@@ -66,13 +66,19 @@ assets:
     fallback_jpy: false
 
   USTEC:
+    # STATUS: LOCKED BASELINE — see src/backtesting/BASELINE_USTEC.md
     sl_pct: 0.003
     trail_mult: 3.0
     risk_pct: 0.02
     lrr_min: 1.0
-    hours: [15, 18]
+    hours: [18]             # US_MID early slot only — hour 15 excluded (London contamination)
     dow: [0, 1, 2, 3, 4]
     atr_mult: 1.5
+    force_direction: 1      # forced LONG — edge validated as LONG-only in US_MID early
+    low_vol_pct: 50         # LOW_VOL regime: daily_atr <= rolling_quantile(p50, w=90)
+    low_vol_win: 90
+    roll_mfe_n: 20          # roll_mfe gate: rolling median(mfe/mae, N=20, shift=1) > 1.0
+    roll_mfe_min: 1.0
     fallback_comm: 0.00
     fallback_cs: 1
     fallback_ml: 0.1

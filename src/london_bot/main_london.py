@@ -21,6 +21,7 @@ from src.london_bot.london_params import (
     build_live_asset_params,
     validate_symbol,
     init_volume_means,
+    init_daily_filters,
 )
 from src.london_bot.scheduler_london import (
     is_new_mt5_day,
@@ -136,6 +137,8 @@ def main() -> None:
         logger=log,
     )
 
+    daily_filters = init_daily_filters(asset_params=asset_params, logger=log)
+
     open_positions, trades_today = load_state(
         state_file=config["paths"]["state_file"],
         logger=log,
@@ -187,6 +190,7 @@ def main() -> None:
                 last_date = mt5_now.date()
                 trades_today = reset_daily_trades(asset_params)
                 last_signal_check.clear()
+                daily_filters = init_daily_filters(asset_params=asset_params, logger=log)
 
                 save_state(
                     open_positions=open_positions,
@@ -338,6 +342,7 @@ def main() -> None:
                         mt5_now=mt5_now,
                         volume_means=volume_means,
                         initial_capital_per_asset=config["bot"]["initial_capital_per_asset"],
+                        daily_filter=daily_filters.get(symbol),
                     )
 
                     if sig:

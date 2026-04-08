@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, FrozenSet, Optional
 
 import numpy as np
 import pandas as pd
@@ -29,7 +29,7 @@ def build_live_asset_params(
         info = get_symbol_info(symbol)
 
         if info is None:
-            final[symbol] = {
+            p = {
                 "sl_pct": s["sl_pct"],
                 "trail_mult": s["trail_mult"],
                 "risk_pct": s["risk_pct"],
@@ -45,6 +45,12 @@ def build_live_asset_params(
                 "digits": int(s["fallback_digits"]),
                 "jpy": bool(s["fallback_jpy"]),
             }
+            for opt_key in ("force_direction", "be_atr_mult",
+                            "low_vol_pct", "low_vol_win",
+                            "roll_mfe_n", "roll_mfe_min"):
+                if opt_key in s:
+                    p[opt_key] = s[opt_key]
+            final[symbol] = p
             continue
 
         digits = int(info.digits)
@@ -57,7 +63,7 @@ def build_live_asset_params(
         )
         spread_fallback = max(spread_now, point)
 
-        final[symbol] = {
+        p = {
             "sl_pct": s["sl_pct"],
             "trail_mult": s["trail_mult"],
             "risk_pct": s["risk_pct"],
@@ -73,6 +79,13 @@ def build_live_asset_params(
             "digits": digits,
             "jpy": bool(getattr(info, "currency_profit", "") == "JPY"),
         }
+        # Forward optional strategy keys — no-op for assets that don't define them
+        for opt_key in ("force_direction", "be_atr_mult",
+                        "low_vol_pct", "low_vol_win",
+                        "roll_mfe_n", "roll_mfe_min"):
+            if opt_key in s:
+                p[opt_key] = s[opt_key]
+        final[symbol] = p
 
     return final
 
@@ -210,3 +223,130 @@ def mt5_timeframe_m2():
     """
     import MetaTrader5 as mt5
     return mt5.TIMEFRAME_M2
+
+
+def build_daily_filter(
+    symbol: str,
+    asset_params: Dict[str, Any],
+    logger,
+) -> Optional[FrozenSet[date]]:
+    """
+    Computes the set of allowed trading dates for an asset based on its
+    daily regime filter keys (low_vol_pct, low_vol_win, roll_mfe_n, roll_mfe_min).
+
+    Returns:
+        frozenset of allowed date objects, or None if no filter is configured
+        for this asset (all days allowed).
+
+    Mirrors backtest_runner._build_daily_filter exactly (causal, shift=1, no look-ahead).
+    Must be called at startup and refreshed at each new trading day.
+
+    Data source: tries data/parquet/ first, then data/backtesting/. Requires M2 parquet
+    with columns: time, high, low, open, atr14.
+    """
+    lv_pct = asset_params.get("low_vol_pct")
+    lv_win = asset_params.get("low_vol_win")
+    if lv_pct is None or lv_win is None:
+        return None  # no filter configured for this asset
+
+    project_root = Path(__file__).resolve().parents[2]
+    candidates = [
+        project_root / "data" / "parquet"     / f"{symbol}_Data.parquet",
+        project_root / "data" / "backtesting" / f"{symbol}_Data.parquet",
+    ]
+    df = None
+    for path in candidates:
+        if path.exists():
+            try:
+                df = pd.read_parquet(path, engine="pyarrow")
+                break
+            except Exception as e:
+                logger.warning(f"{symbol}: build_daily_filter could not read {path}: {e}")
+
+    if df is None:
+        logger.warning(
+            f"{symbol}: build_daily_filter — no parquet found in {[str(c) for c in candidates]}. "
+            f"Daily filter DISABLED (all days allowed). Update parquet to enable."
+        )
+        return None
+
+    # ── Replicate backtest_runner._build_daily_filter exactly ─────────────────
+    df["time"] = pd.to_datetime(df["time"], errors="coerce")
+    df = df.dropna(subset=["time"]).sort_values("time").reset_index(drop=True)
+    df["_date"] = df["time"].dt.date
+
+    # Compute ATR14 if not already present
+    if "atr14" not in df.columns:
+        df["pc"] = df["close"].shift(1)
+        df["tr"] = np.maximum(
+            df["high"] - df["low"],
+            np.maximum(abs(df["high"] - df["pc"]), abs(df["low"] - df["pc"])),
+        )
+        df["atr14"] = df["tr"].rolling(14).mean()
+
+    # LOW_VOL base filter
+    daily_atr = df.groupby("_date")["atr14"].mean()
+    rolling_thr = (
+        daily_atr
+        .rolling(lv_win, min_periods=lv_win // 2)
+        .quantile(lv_pct / 100.0)
+    )
+    allowed: FrozenSet[date] = frozenset(
+        d for d in daily_atr.index
+        if pd.notna(rolling_thr.loc[d]) and daily_atr.loc[d] <= rolling_thr.loc[d]
+    )
+
+    # roll_mfe quality gate
+    roll_mfe_n   = asset_params.get("roll_mfe_n")
+    roll_mfe_min = asset_params.get("roll_mfe_min")
+    if roll_mfe_n is not None and roll_mfe_min is not None:
+        # MT5 hours 18+19 = UTC 16-17 (matches backtest_runner parity)
+        sess = df[df["time"].dt.hour.isin([18, 19])].copy()
+        mfe_rows = []
+        for d_s, grp in sess.groupby("_date"):
+            if d_s not in allowed:          # only LOW_VOL days
+                continue
+            o_s = grp["open"].iloc[0]
+            mfe = grp["high"].max() - o_s
+            mae = o_s - grp["low"].min()
+            if mae > 1.0:
+                mfe_rows.append({"date": d_s, "mfe_mae": mfe / mae})
+        if mfe_rows:
+            mfe_s = (
+                pd.DataFrame(mfe_rows)
+                .sort_values("date")
+                .reset_index(drop=True)
+            )
+            mfe_s["mfe_roll"] = (
+                mfe_s["mfe_mae"]
+                .shift(1)
+                .rolling(roll_mfe_n, min_periods=roll_mfe_n // 2)
+                .median()
+            )
+            mfe_pass: FrozenSet[date] = frozenset(
+                mfe_s.loc[mfe_s["mfe_roll"] > roll_mfe_min, "date"]
+            )
+            allowed = frozenset(d for d in allowed if d in mfe_pass)
+
+    logger.info(
+        f"{symbol}: daily_filter built — {len(allowed)} allowed dates "
+        f"(LOW_VOL p{lv_pct} w{lv_win}"
+        + (f" + roll_mfe>{roll_mfe_min}" if roll_mfe_n else "")
+        + ")"
+    )
+    return allowed
+
+
+def init_daily_filters(
+    asset_params: Dict[str, Dict[str, Any]],
+    logger,
+) -> Dict[str, Optional[FrozenSet[date]]]:
+    """
+    Builds daily regime filters for all assets at startup.
+    Returns dict: symbol -> frozenset(allowed dates) or None (no filter).
+    Call again at each new trading day to include today's date if eligible.
+    """
+    filters: Dict[str, Optional[FrozenSet[date]]] = {}
+    for symbol, params in asset_params.items():
+        filters[symbol] = build_daily_filter(symbol, params, logger)
+    return filters

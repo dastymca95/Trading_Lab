@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, FrozenSet, Optional
 
 import numpy as np
 
@@ -17,13 +17,21 @@ def check_signal(
     mt5_now: datetime,
     volume_means: Dict[str, float],
     initial_capital_per_asset: float,
+    daily_filter: Optional[FrozenSet] = None,
 ) -> Optional[Signal]:
     """
     Evalúa si existe señal London Range Breakout para un símbolo dado.
 
+    daily_filter: frozenset of allowed date objects (from init_daily_filters).
+                  None = no filter, all days pass. Checked before any signal logic.
+
     Asume que los filtros operativos externos ya fueron validados
     en risk_manager_london.py.
     """
+    # Daily regime filter gate — must precede all signal logic (causal, no look-ahead)
+    if daily_filter is not None and mt5_now.date() not in daily_filter:
+        return None
+
     ctx = get_signal_context(
         symbol=symbol,
         signal_date=mt5_now.date(),
@@ -75,6 +83,14 @@ def check_signal(
 
     if direction is None:
         return None
+
+    # Direction override — mirrors backtest_runner force_direction block exactly.
+    # Signal must still exist (breakout/large-candle + LRR + volume all apply).
+    # Generic: only active when asset_params defines force_direction.
+    force_dir = asset_params.get("force_direction")
+    if force_dir is not None and direction != force_dir:
+        signal_type += f' [→{"LONG" if force_dir == 1 else "SHORT"}]'
+        direction = force_dir
 
     if direction == 1:
         stop_loss = entry_price * (1 - asset_params["sl_pct"])
