@@ -1,0 +1,67 @@
+{
+  "phase": "Phase 1 - clock integrity + fixed-time baselines",
+  "mt5_timezone": "Etc/GMT-2",
+  "data_dir": "C:\\Users\\Dasty\\PycharmProjects\\Trading_Lab\\data\\backtesting",
+  "test_start": "2025-01-01",
+  "all_definition": "all available history",
+  "train_definition": "trade_date < TEST_START",
+  "test_definition": "trade_date >= TEST_START",
+  "rolling_months": 12,
+  "rolling_step_months": 3,
+  "capital_mode": "fixed minimum-lot research baseline referenced to INITIAL_PER_ASSET; ret_pct and MDD may exceed -100 if cumulative PnL does",
+  "windows": {
+    "ASIA_EU_CONC": {
+      "title": "Asia-close / EU-open concentration",
+      "start_utc": "07:00",
+      "end_utc": "09:59"
+    },
+    "EU_OPEN": {
+      "title": "EU open",
+      "start_utc": "08:00",
+      "end_utc": "09:59"
+    },
+    "US_OPEN": {
+      "title": "US open",
+      "start_utc": "14:30",
+      "end_utc": "15:59"
+    },
+    "US_MID": {
+      "title": "US mid-session",
+      "start_utc": "16:00",
+      "end_utc": "19:59"
+    },
+    "US_LATE": {
+      "title": "US late-session",
+      "start_utc": "20:00",
+      "end_utc": "21:59"
+    }
+  },
+  "universe": {
+    "US500": [
+      "EU_OPEN",
+      "ASIA_EU_CONC",
+      "US_MID",
+      "US_LATE"
+    ],
+    "USTEC": [
+      "EU_OPEN",
+      "ASIA_EU_CONC",
+      "US_MID",
+      "US_LATE"
+    ],
+    "DE40": [
+      "EU_OPEN",
+      "US_OPEN",
+      "US_MID"
+    ],
+    "US30": [
+      "US_OPEN",
+      "US_MID"
+    ]
+  },
+  "directions": [
+    "LONG",
+    "SHORT"
+  ],
+  "cost_model": "gross PnL minus entry spread cost (dynamic bar spread if available else fallback spread) minus roundtrip commission"
+}

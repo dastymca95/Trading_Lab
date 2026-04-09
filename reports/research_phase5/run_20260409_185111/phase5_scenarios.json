@@ -1,0 +1,102 @@
+{
+  "phase": "Phase 5 - pre-operational evaluation",
+  "phase4_source_run": "C:\\Users\\Dasty\\PycharmProjects\\Trading_Lab\\reports\\research_phase4\\run_20260409_182845",
+  "test_start": "2025-01-01",
+  "scenarios": [
+    {
+      "scenario": "BASELINE",
+      "category": "BASELINE",
+      "variant": "BASELINE",
+      "spread_mult": 1.0,
+      "commission_mult": 1.0,
+      "start_shift_min": 0,
+      "end_shift_min": 0,
+      "description": "Original Phase 4 candidate window and baseline variant."
+    },
+    {
+      "scenario": "COST_UP_1",
+      "category": "COST",
+      "variant": "BASELINE",
+      "spread_mult": 1.25,
+      "commission_mult": 1.25,
+      "start_shift_min": 0,
+      "end_shift_min": 0,
+      "description": "Spread and commission multiplied by 1.25."
+    },
+    {
+      "scenario": "COST_UP_2",
+      "category": "COST",
+      "variant": "BASELINE",
+      "spread_mult": 1.5,
+      "commission_mult": 1.5,
+      "start_shift_min": 0,
+      "end_shift_min": 0,
+      "description": "Spread and commission multiplied by 1.50."
+    },
+    {
+      "scenario": "TIME_SHIFT_EARLY_30",
+      "category": "TIMING",
+      "variant": "BASELINE",
+      "spread_mult": 1.0,
+      "commission_mult": 1.0,
+      "start_shift_min": -30,
+      "end_shift_min": -30,
+      "description": "Entry and exit shifted 30 minutes earlier."
+    },
+    {
+      "scenario": "TIME_SHIFT_LATE_30",
+      "category": "TIMING",
+      "variant": "BASELINE",
+      "spread_mult": 1.0,
+      "commission_mult": 1.0,
+      "start_shift_min": 30,
+      "end_shift_min": 30,
+      "description": "Entry and exit shifted 30 minutes later."
+    },
+    {
+      "scenario": "HOLD_SHORTER_30",
+      "category": "HOLD",
+      "variant": "BASELINE",
+      "spread_mult": 1.0,
+      "commission_mult": 1.0,
+      "start_shift_min": 0,
+      "end_shift_min": -30,
+      "description": "Same entry, exit 30 minutes earlier."
+    },
+    {
+      "scenario": "HOLD_LONGER_30",
+      "category": "HOLD",
+      "variant": "BASELINE",
+      "spread_mult": 1.0,
+      "commission_mult": 1.0,
+      "start_shift_min": 0,
+      "end_shift_min": 30,
+      "description": "Same entry, exit 30 minutes later."
+    },
+    {
+      "scenario": "NO_FOMC",
+      "category": "EVENT",
+      "variant": "NO_FOMC",
+      "spread_mult": 1.0,
+      "commission_mult": 1.0,
+      "start_shift_min": 0,
+      "end_shift_min": 0,
+      "description": "Exclude FOMC decision dates only; allowed where Phase 4 already approved NO_FOMC."
+    }
+  ],
+  "readiness_rules": {
+    "scenario_pass": "TEST PF >= 1.05, TEST expectancy > 0, TEST retention >= 85.0%",
+    "ROBUST": "baseline passes, all cost tests pass, >=3/4 timing+hold pass, TRAIN baseline positive, full/rolling ratios >=55%",
+    "ACCEPTABLE": "baseline passes, >=1/2 cost tests pass, >=2/4 timing+hold pass, full/rolling ratios >=45%",
+    "FRAGILE": "baseline passes but perturbation support is limited",
+    "NOT_TRANSLATION_READY": "baseline fails or perturbations do not support paper-candidate review"
+  },
+  "retention_note": "retention_pct compares each scenario sample count to the original BASELINE sample count; timing-shift scenarios can exceed 100% at dataset boundaries.",
+  "non_goals": [
+    "no new filters",
+    "no new conditioners",
+    "no parameter search",
+    "no runtime integration",
+    "no USTEC review"
+  ]
+}

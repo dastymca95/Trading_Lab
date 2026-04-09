@@ -1,0 +1,63 @@
+{
+  "phase": "Phase 3 - cross-asset comparison + translation candidacy",
+  "phase1_run": "C:\\Users\\Dasty\\PycharmProjects\\Trading_Lab\\reports\\research_phase1\\run_20260408_214802",
+  "phase2_run": "C:\\Users\\Dasty\\PycharmProjects\\Trading_Lab\\reports\\research_phase2\\run_20260409_180003",
+  "shortlist": [
+    {
+      "tier": "TIER1",
+      "asset": "DE40",
+      "family": "US_MID",
+      "direction": "LONG",
+      "structural_note": "Late European / US overlap fixed-time drift; broad enough to avoid micro-breakout dependency.",
+      "translation_difficulty": "MEDIUM",
+      "translation_risk": "Needs runner translation of fixed-time entry/exit, session clock, spread/commission, and optional FOMC calendar."
+    },
+    {
+      "tier": "TIER1",
+      "asset": "US30",
+      "family": "US_OPEN",
+      "direction": "LONG",
+      "structural_note": "US cash-open directional concentration; simple but higher-volatility hard-mode asset.",
+      "translation_difficulty": "MEDIUM",
+      "translation_risk": "Needs conservative cost/slippage review and train/test parity checks before operational translation."
+    },
+    {
+      "tier": "TIER2",
+      "asset": "DE40",
+      "family": "US_OPEN",
+      "direction": "LONG",
+      "structural_note": "US-open spillover into DE40; structurally plausible cross-market session effect.",
+      "translation_difficulty": "MEDIUM",
+      "translation_risk": "Needs proof that weak TRAIN behavior is not masked by TEST-only improvement."
+    },
+    {
+      "tier": "WATCHLIST",
+      "asset": "DE40",
+      "family": "EU_OPEN",
+      "direction": "SHORT",
+      "structural_note": "EU-open mean/drift candidate; plausible session effect but less stable than DE40 long candidates.",
+      "translation_difficulty": "HIGH",
+      "translation_risk": "EU-open execution is sensitive to opening volatility and conditioner sample collapse."
+    },
+    {
+      "tier": "WATCHLIST",
+      "asset": "USTEC",
+      "family": "ASIA_EU_CONC",
+      "direction": "LONG",
+      "structural_note": "Asia-close / EU-open concentration candidate; weak after trust reset and not a USTEC rescue thesis.",
+      "translation_difficulty": "HIGH",
+      "translation_risk": "Needs stronger clean baseline evidence before any runner translation should be considered."
+    }
+  ],
+  "conditioners_reviewed": [
+    "BASELINE",
+    "NO_FOMC",
+    "VOL_LOW_P50W90"
+  ],
+  "promotion_guardrails": {
+    "no_new_families": true,
+    "no_new_conditioners": true,
+    "vol_low_sample_collapse_not_promotion_basis": true,
+    "research_baseline_not_operational_runner": true
+  }
+}

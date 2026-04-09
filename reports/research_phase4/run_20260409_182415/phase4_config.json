@@ -1,0 +1,51 @@
+{
+  "phase": "Phase 4 - session candidate runner v1",
+  "data_dir": "C:\\Users\\Dasty\\PycharmProjects\\Trading_Lab\\data\\backtesting",
+  "phase3_source_run": "C:\\Users\\Dasty\\PycharmProjects\\Trading_Lab\\reports\\research_phase3\\run_20260409_181737",
+  "candidate_specs_file": "C:\\Users\\Dasty\\PycharmProjects\\Trading_Lab\\reports\\research_phase4\\run_20260409_182415\\phase4_candidate_specs.json",
+  "test_start": "2025-01-01",
+  "all_definition": "all available candidate trade dates",
+  "train_definition": "trade_date < TEST_START",
+  "test_definition": "trade_date >= TEST_START",
+  "rolling_months": 12,
+  "rolling_step_months": 3,
+  "capital_mode": "fixed minimum-lot candidate runner referenced to INITIAL_PER_ASSET; not production sizing",
+  "allowed_variants": {
+    "BASELINE": "No conditioner.",
+    "NO_FOMC": "Exclude FOMC decision dates only; optional comparison where Phase 3 allowed it."
+  },
+  "explicit_non_goals": [
+    "no breakout",
+    "no ORB",
+    "no stop loss",
+    "no trailing",
+    "no take profit",
+    "no runtime/paper/live integration",
+    "no new filters",
+    "no parameter search"
+  ],
+  "data_qc": {
+    "DE40": {
+      "Asset": "DE40",
+      "Rows Initial": 1417712,
+      "Duplicates Removed": 0,
+      "NaN Rows Removed": 0,
+      "Corrupt Rows Removed": 0,
+      "Gap Count": 4833,
+      "Gap %": 0.3409,
+      "Rows Final": 1417712,
+      "Has Spread Column": true
+    },
+    "US30": {
+      "Asset": "US30",
+      "Rows Initial": 1452543,
+      "Duplicates Removed": 0,
+      "NaN Rows Removed": 0,
+      "Corrupt Rows Removed": 0,
+      "Gap Count": 3232,
+      "Gap %": 0.2225,
+      "Rows Final": 1452543,
+      "Has Spread Column": true
+    }
+  }
+}

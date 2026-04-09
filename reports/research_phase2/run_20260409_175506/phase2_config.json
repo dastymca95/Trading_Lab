@@ -1,0 +1,65 @@
+{
+  "phase": "Phase 2 - one-conditioner session research",
+  "mt5_timezone": "Etc/GMT-2",
+  "data_dir": "C:\\Users\\Dasty\\PycharmProjects\\Trading_Lab\\data\\backtesting",
+  "test_start": "2025-01-01",
+  "shortlist": [
+    {
+      "tier": "TIER1",
+      "asset": "DE40",
+      "family": "US_MID",
+      "direction": "LONG"
+    },
+    {
+      "tier": "TIER1",
+      "asset": "US30",
+      "family": "US_OPEN",
+      "direction": "LONG"
+    },
+    {
+      "tier": "TIER2",
+      "asset": "DE40",
+      "family": "US_OPEN",
+      "direction": "LONG"
+    },
+    {
+      "tier": "TIER2",
+      "asset": "DE40",
+      "family": "EU_OPEN",
+      "direction": "SHORT"
+    },
+    {
+      "tier": "TIER2",
+      "asset": "USTEC",
+      "family": "ASIA_EU_CONC",
+      "direction": "LONG"
+    },
+    {
+      "tier": "BORDERLINE",
+      "asset": "USTEC",
+      "family": "US_MID",
+      "direction": "LONG"
+    },
+    {
+      "tier": "BORDERLINE",
+      "asset": "US500",
+      "family": "US_MID",
+      "direction": "LONG"
+    }
+  ],
+  "conditioners": {
+    "BASELINE": "Pure Phase 1 baseline reference.",
+    "NO_FOMC": "Exclude FOMC decision dates only. No other macro calendar added.",
+    "VOL_LOW_P50W90": "Causal daily volatility gate: prior completed day ATR <= rolling p50 threshold over 90 completed trading days."
+  },
+  "rolling_months": 12,
+  "rolling_step_months": 3,
+  "min_retention_warning_pct": 50.0,
+  "cost_model": "Same fixed minimum-lot cost model as Phase 1.",
+  "non_goals": [
+    "No stacked conditioners",
+    "No parameter sweeps",
+    "No breakout or ORB",
+    "No operational runner translation"
+  ]
+}

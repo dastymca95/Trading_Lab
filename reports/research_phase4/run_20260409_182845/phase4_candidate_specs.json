@@ -1,0 +1,85 @@
+[
+  {
+    "candidate_id": "DE40_US_MID_LONG",
+    "asset": "DE40",
+    "family": "US_MID",
+    "direction": "LONG",
+    "variants": [
+      "BASELINE",
+      "NO_FOMC"
+    ],
+    "phase3_decision": "PROMOTE",
+    "runner_like_notes": "Fixed UTC session entry/exit, fixed long direction, one position per trade date, spread and commission included.",
+    "remaining_translation_risk": "Future runtime translation still needs scheduler/order semantics, holiday handling, calendar source governance for NO_FOMC, live spread/slippage validation, and state reconciliation.",
+    "window": {
+      "source": "research.session_baselines_v2.WINDOW_SPECS",
+      "start_utc": "16:00",
+      "end_utc": "19:59",
+      "entry_rule": "first available M2 bar open inside window",
+      "exit_rule": "last available M2 bar close inside window"
+    },
+    "costs": {
+      "spread": "dynamic entry bar spread when available else fallback_spread_px",
+      "commission": "roundtrip commission per lot from resolved specs",
+      "lots": 0.1,
+      "contract_size": 1.0,
+      "fallback_spread_px": 1.0,
+      "commission_rt_per_lot": 0.0
+    }
+  },
+  {
+    "candidate_id": "US30_US_OPEN_LONG",
+    "asset": "US30",
+    "family": "US_OPEN",
+    "direction": "LONG",
+    "variants": [
+      "BASELINE"
+    ],
+    "phase3_decision": "PROMOTE WITH CAUTION",
+    "runner_like_notes": "Fixed UTC US-open entry/exit, fixed long direction, one position per trade date, spread and commission included.",
+    "remaining_translation_risk": "Future runtime translation still needs conservative US30 slippage review, live spread validation, scheduler/order semantics, and additional caution because TRAIN was weak.",
+    "window": {
+      "source": "research.session_baselines_v2.WINDOW_SPECS",
+      "start_utc": "14:30",
+      "end_utc": "15:59",
+      "entry_rule": "first available M2 bar open inside window",
+      "exit_rule": "last available M2 bar close inside window"
+    },
+    "costs": {
+      "spread": "dynamic entry bar spread when available else fallback_spread_px",
+      "commission": "roundtrip commission per lot from resolved specs",
+      "lots": 0.1,
+      "contract_size": 1.0,
+      "fallback_spread_px": 3.0,
+      "commission_rt_per_lot": 0.0
+    }
+  },
+  {
+    "candidate_id": "DE40_US_OPEN_LONG",
+    "asset": "DE40",
+    "family": "US_OPEN",
+    "direction": "LONG",
+    "variants": [
+      "BASELINE",
+      "NO_FOMC"
+    ],
+    "phase3_decision": "PROMOTE WITH CAUTION",
+    "runner_like_notes": "Fixed UTC US-open entry/exit, fixed long direction, one position per trade date, spread and commission included.",
+    "remaining_translation_risk": "Future runtime translation still needs scheduler/order semantics, live spread/slippage validation, and proof that weak TRAIN behavior is not masked by TEST-only strength.",
+    "window": {
+      "source": "research.session_baselines_v2.WINDOW_SPECS",
+      "start_utc": "14:30",
+      "end_utc": "15:59",
+      "entry_rule": "first available M2 bar open inside window",
+      "exit_rule": "last available M2 bar close inside window"
+    },
+    "costs": {
+      "spread": "dynamic entry bar spread when available else fallback_spread_px",
+      "commission": "roundtrip commission per lot from resolved specs",
+      "lots": 0.1,
+      "contract_size": 1.0,
+      "fallback_spread_px": 1.0,
+      "commission_rt_per_lot": 0.0
+    }
+  }
+]
