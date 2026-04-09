@@ -23,6 +23,7 @@ USO:
     python backtest_hibrido_v2_ultra_aligned.py
 """
 
+import argparse
 import os
 import glob
 import json
@@ -44,28 +45,44 @@ except Exception:
 # CONFIGURACIÓN
 # ═══════════════════════════════════════════════════════════════════════
 
-from backtest_config import (
-    SEED, INITIAL_PER_ASSET, GLOBAL_RISK_PCT, USE_LIVE_SPECS,
-    AUTO_ENABLE_SYMBOL, COMMISSION_LOOKBACK_DAYS,
-    TRAIN_END, TEST_START, MAX_BARS, ROLLING_SHARPE_WIN,
-    MONTE_CARLO_RUNS, BOOTSTRAP_RUNS, TIMEFRAME_MINUTES,
-    ASSET_PARAMS_BASE, OPTIONAL_ASSETS, OPTIONAL_PARAMS,
-    COMMISSION_MANUAL_RT,
-)
+try:
+    from .backtest_config import (
+        SEED, INITIAL_PER_ASSET, GLOBAL_RISK_PCT, USE_LIVE_SPECS,
+        AUTO_ENABLE_SYMBOL, COMMISSION_LOOKBACK_DAYS,
+        TRAIN_END, TEST_START, MAX_BARS, ROLLING_SHARPE_WIN,
+        MONTE_CARLO_RUNS, BOOTSTRAP_RUNS, TIMEFRAME_MINUTES,
+        ASSET_PARAMS_BASE, OPTIONAL_ASSETS, OPTIONAL_PARAMS,
+        COMMISSION_MANUAL_RT,
+    )
+except ImportError:
+    from backtest_config import (
+        SEED, INITIAL_PER_ASSET, GLOBAL_RISK_PCT, USE_LIVE_SPECS,
+        AUTO_ENABLE_SYMBOL, COMMISSION_LOOKBACK_DAYS,
+        TRAIN_END, TEST_START, MAX_BARS, ROLLING_SHARPE_WIN,
+        MONTE_CARLO_RUNS, BOOTSTRAP_RUNS, TIMEFRAME_MINUTES,
+        ASSET_PARAMS_BASE, OPTIONAL_ASSETS, OPTIONAL_PARAMS,
+        COMMISSION_MANUAL_RT,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # UTILIDADES MT5 / SPECS
 # ═══════════════════════════════════════════════════════════════════════
 
-from backtest_specs import resolve_asset_params
+try:
+    from .backtest_specs import resolve_asset_params
+except ImportError:
+    from backtest_specs import resolve_asset_params
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # CARGA DE DATOS + QC
 # ═══════════════════════════════════════════════════════════════════════
 
-from backtest_data import validate_price_data, load_price_data
+try:
+    from .backtest_data import validate_price_data, load_price_data
+except ImportError:
+    from backtest_data import validate_price_data, load_price_data
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -140,8 +157,6 @@ def simulate_trade_lifecycle(si, H, L, C, sl, ep, sp, direction, av, p):
         ns  = (bp - av*p['trail_mult']) if ib else (bp + av*p['trail_mult'])
         ns  = max(ns, be_p) if ib else min(ns, be_p)
         csl = max(csl, ns) if ib else min(csl, ns)
-        if ib  and l2 <= csl: xp = csl; bars = i+1; break
-        if not ib and h2 >= csl: xp = csl; bars = i+1; break
     else:
         li = len(fC) - 1
         while li >= 0 and np.isnan(fC[li]): li -= 1
@@ -241,6 +256,12 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
 
     daily_filter = _build_daily_filter(asset, df, p)
 
+    sample_start = pd.Timestamp(date_start).normalize() if date_start is not None else pd.Timestamp(df['date'].min())
+    sample_end = (
+        min(pd.Timestamp(date_end).normalize() - pd.Timedelta(days=1), pd.Timestamp(df['date'].max()))
+        if date_end is not None else pd.Timestamp(df['date'].max())
+    )
+
     cap = cap_start
     equity = [cap]
     trades = []
@@ -257,7 +278,8 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
 
         if dow not in p['dow']: continue
         if daily_filter is not None and d not in daily_filter: continue
-        if tv < vm: continue
+        vm_ref = sig.get('volume_mean_prior', np.nan)
+        if pd.isna(vm_ref) or tv < vm_ref: continue
         if ops.get(d, 0) >= 2: continue
         if pd.isna(av) or av == 0: continue
         if pd.isna(lrr) or lrr <= p['lrr_min']: continue
@@ -280,12 +302,15 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
         sl = ep*(1-p['sl_pct']) if direction==1 else ep*(1+p['sl_pct'])
         if not (pd.isna(lh) or pd.isna(ll)):
             sl = max(sl, ll) if direction==1 else min(sl, lh)
+        if (direction == 1 and sl >= ep) or (direction == -1 and sl <= ep):
+            continue
 
         sl_dist = max(abs(ep - sl) + sp, ep * 0.0015)
         if sl_dist < 1e-8: continue
 
         lots = calculate_position_size(cap, sl_dist, ep, p)
 
+        risk_usd = round(cap * p['risk_pct'], 2)
         xp, bars = simulate_trade_lifecycle(si, H, L, C, sl, ep, sp, direction, av, p)
 
         raw, net, result = calculate_trade_pnl(xp, ep, direction, lots, sp, p)
@@ -309,7 +334,7 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
             'Precio Salida': round(xp, p['digits']),
             'Distancia SL pts': round(sl_dist, p['digits']),
             'Lotes': lots,                    'Riesgo %': round(p['risk_pct'] * 100, 2),
-            'Riesgo USD': round(cap*p['risk_pct'],2),   'Comisión RT': p['comm'],
+            'Riesgo USD': risk_usd,                     'Comisión RT': p['comm'],
             'PnL Bruto USD': round(raw,2),    'Comisión USD': round(lots*p['comm'],2),
             'PnL Neto USD': round(net,2),      'Capital Tras Op': round(cap,2),
             'Resultado': result,              'Duración (min)': bars*2,
@@ -318,31 +343,49 @@ def run_backtest(asset, df, lr, vm, p, cap_start,
             'Date': str(pd.to_datetime(d).date()),
         })
 
-    return pd.DataFrame(trades), np.array(equity)
+    trades_df = pd.DataFrame(trades)
+    trades_df.attrs['sample_start'] = sample_start
+    trades_df.attrs['sample_end'] = sample_end
+    return trades_df, np.array(equity)
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # ESTADÍSTICAS
 # ═══════════════════════════════════════════════════════════════════════
 
-from backtest_stats import (
-    bootstrap_mean_ci, sign_test_pvalue, monte_carlo_dd,
-    daily_equity, rolling_sharpe, monthly_heatmap,
-    return_distribution, calc_metrics,
-)
+try:
+    from .backtest_stats import (
+        bootstrap_mean_ci, sign_test_pvalue, monte_carlo_dd,
+        daily_equity, rolling_sharpe, monthly_heatmap,
+        return_distribution, calc_metrics,
+    )
+except ImportError:
+    from backtest_stats import (
+        bootstrap_mean_ci, sign_test_pvalue, monte_carlo_dd,
+        daily_equity, rolling_sharpe, monthly_heatmap,
+        return_distribution, calc_metrics,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
 # EXCEL
 # ═══════════════════════════════════════════════════════════════════════
 
-from backtest_reporter import HFILL, HFONT, thin, BRD, write_df_sheet
+try:
+    from .backtest_reporter import HFILL, HFONT, thin, BRD, write_df_sheet
+except ImportError:
+    from backtest_reporter import HFILL, HFONT, thin, BRD, write_df_sheet
 
 
 def aggregate_portfolio(all_full, all_test, cap0):
     all_t_full = pd.concat(all_full).sort_values('Fecha Apertura').reset_index(drop=True)
     all_t_full['#'] = range(1, len(all_t_full)+1)
     all_t_test = pd.concat(all_test).sort_values('Fecha Apertura').reset_index(drop=True) if all_test else pd.DataFrame()
+    all_t_full.attrs['sample_start'] = min(pd.Timestamp(t.attrs.get('sample_start')) for t in all_full)
+    all_t_full.attrs['sample_end'] = max(pd.Timestamp(t.attrs.get('sample_end')) for t in all_full)
+    if len(all_t_test) > 0:
+        all_t_test.attrs['sample_start'] = min(pd.Timestamp(t.attrs.get('sample_start')) for t in all_test)
+        all_t_test.attrs['sample_end'] = max(pd.Timestamp(t.attrs.get('sample_end')) for t in all_test)
 
     cap  = cap0
     eq = [cap]
@@ -350,7 +393,13 @@ def aggregate_portfolio(all_full, all_test, cap0):
         cap = max(cap + pnl, 0.01)
         eq.append(cap)
     eq = np.array(eq)
-    pm_full = calc_metrics(all_t_full, eq, cap0)
+    pm_full = calc_metrics(
+        all_t_full,
+        eq,
+        cap0,
+        sample_start=all_t_full.attrs.get('sample_start'),
+        sample_end=all_t_full.attrs.get('sample_end'),
+    )
 
     if len(all_t_test) > 0:
         cap = cap0
@@ -359,7 +408,13 @@ def aggregate_portfolio(all_full, all_test, cap0):
             cap = max(cap + pnl, 0.01)
             eq_t.append(cap)
         eq_t = np.array(eq_t)
-        pm_test = calc_metrics(all_t_test, eq_t, cap0)
+        pm_test = calc_metrics(
+            all_t_test,
+            eq_t,
+            cap0,
+            sample_start=all_t_test.attrs.get('sample_start'),
+            sample_end=all_t_test.attrs.get('sample_end'),
+        )
     else:
         pm_test = {}
 
@@ -390,6 +445,11 @@ def _fmt_m(m, period, W=72):
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Backtest operativo hybrid breakout system')
+    parser.add_argument('--be_atr_mult', type=float, default=None,
+                        help='Override solo para backtesting del umbral BE ATR.')
+    args = parser.parse_args()
+
     W = 76   # console width
 
     print("╔" + "═"*(W-2) + "╗")
@@ -404,6 +464,10 @@ def main():
     out_path    = os.path.join(REPORTS_DIR, f"Backtest_Hibrido_Aligned_{ts}.xlsx")
 
     ASSET_PARAMS = resolve_asset_params(DATA_DIR)
+    if args.be_atr_mult is not None:
+        for _asset, _p in ASSET_PARAMS.items():
+            _p['be_atr_mult'] = float(args.be_atr_mult)
+        print(f"  [CLI override] be_atr_mult = {args.be_atr_mult}")
 
     # solo mantener activos con archivo de precios disponible
     final_assets = {}
@@ -469,14 +533,22 @@ def main():
         cap = INITIAL_PER_ASSET
 
         t_f, e_f = run_backtest(asset, df, lr, vm, p, cap, None, None, 'FULL')
-        m_f = calc_metrics(t_f, e_f, cap)
+        m_f = calc_metrics(
+            t_f, e_f, cap,
+            sample_start=t_f.attrs.get('sample_start'),
+            sample_end=t_f.attrs.get('sample_end'),
+        )
         results_full[asset] = m_f
         if len(t_f) > 0:
             t_f['asset'] = asset
             all_full.append(t_f)
 
         t_t, e_t = run_backtest(asset, df, lr, vm, p, cap, TEST_START, None, 'TEST')
-        m_t = calc_metrics(t_t, e_t, cap)
+        m_t = calc_metrics(
+            t_t, e_t, cap,
+            sample_start=t_t.attrs.get('sample_start'),
+            sample_end=t_t.attrs.get('sample_end'),
+        )
         results_test[asset] = m_t
         if len(t_t) > 0:
             all_test.append(t_t)
@@ -539,7 +611,11 @@ def main():
             'CommSource': p.get('comm_source', 'json/base'),
             'SpecsMode': 'live_mt5' if USE_LIVE_SPECS else 'json/base',
             'Params':json.dumps({k:p[k] for k in
-                ['sl_pct','trail_mult','risk_pct','lrr_min','hours','dow','atr_mult']},ensure_ascii=False),
+                [k for k in [
+                    'sl_pct','trail_mult','risk_pct','lrr_min','hours','dow','atr_mult',
+                    'be_atr_mult','force_direction','low_vol_pct','low_vol_win',
+                    'roll_mfe_n','roll_mfe_min','atr_cap'
+                ] if k in p]}, ensure_ascii=False),
             'Trades_FULL':mf.get('n',0), 'RetPct_FULL':mf.get('ret',0),
             'PF_FULL':mf.get('pf',0), 'Sharpe_cap0_FULL':mf.get('sharpe',0),
             'Sortino_cap0_FULL':mf.get('sortino',0), 'MDD_trade_FULL':mf.get('mdd',0),
@@ -585,25 +661,41 @@ def main():
     eq_r=[]; dd_r=[]; rs_r=[]
     for asset in sorted(all_t_full['Activo'].unique()):
         t = all_t_full[all_t_full['Activo']==asset].copy()
-        d = daily_equity(t, INITIAL_PER_ASSET)
+        d = daily_equity(
+            t, INITIAL_PER_ASSET,
+            sample_start=t.attrs.get('sample_start'),
+            sample_end=t.attrs.get('sample_end'),
+        )
         if len(d)>0:
             x=d.copy(); x['Asset']=asset
             x=x.rename(columns={'ReturnPct':'ReturnPct_cap0'})
             eq_r.append(x[['Date','Asset','Equity','DailyPnL','ReturnPct_cap0']])
             y=d.copy(); y['Asset']=asset; dd_r.append(y[['Date','Asset','DrawdownPct']])
-            rs=rolling_sharpe(t, INITIAL_PER_ASSET)
+            rs=rolling_sharpe(
+                t, INITIAL_PER_ASSET,
+                sample_start=t.attrs.get('sample_start'),
+                sample_end=t.attrs.get('sample_end'),
+            )
             if len(rs)>0:
                 rs['Asset']=asset
                 rs=rs.rename(columns={'ReturnPct':'ReturnPct_cap0'})
                 rs_r.append(rs[['Date','Asset','ReturnPct_cap0','RollingSharpe']])
 
-    d_p=daily_equity(all_t_full, cap0)
+    d_p=daily_equity(
+        all_t_full, cap0,
+        sample_start=all_t_full.attrs.get('sample_start'),
+        sample_end=all_t_full.attrs.get('sample_end'),
+    )
     if len(d_p)>0:
         z=d_p.copy(); z['Asset']='PORTFOLIO'
         z=z.rename(columns={'ReturnPct':'ReturnPct_cap0'})
         eq_r.append(z[['Date','Asset','Equity','DailyPnL','ReturnPct_cap0']])
         dd_r.append(z[['Date','Asset','DrawdownPct']])
-        rs_p=rolling_sharpe(all_t_full,cap0)
+        rs_p=rolling_sharpe(
+            all_t_full, cap0,
+            sample_start=all_t_full.attrs.get('sample_start'),
+            sample_end=all_t_full.attrs.get('sample_end'),
+        )
         if len(rs_p)>0:
             rs_p['Asset']='PORTFOLIO'
             rs_p=rs_p.rename(columns={'ReturnPct':'ReturnPct_cap0'})
@@ -613,25 +705,35 @@ def main():
     write_df_sheet(wb, 'Drawdown_Curve',     pd.concat(dd_r,ignore_index=True) if dd_r else pd.DataFrame())
     write_df_sheet(wb, 'Rolling_Sharpe',     pd.concat(rs_r,ignore_index=True) if rs_r else pd.DataFrame())
     write_df_sheet(wb, 'Monthly_Heatmap',    monthly_heatmap(all_t_full))
-    write_df_sheet(wb, 'Return_Distribution', return_distribution(all_t_full, cap0))
+    write_df_sheet(
+        wb,
+        'Return_Distribution',
+        return_distribution(
+            all_t_full,
+            cap0,
+            sample_start=all_t_full.attrs.get('sample_start'),
+            sample_end=all_t_full.attrs.get('sample_end'),
+        ),
+    )
 
     assumptions_df = pd.DataFrame([
         {'Key':'GLOBAL_RISK_PCT', 'Value':GLOBAL_RISK_PCT},
         {'Key':'USE_LIVE_SPECS', 'Value':USE_LIVE_SPECS},
         {'Key':'PriceSource', 'Value':'parquet_first_then_xlsx'},
         {'Key':'SignalCandle', 'Value':'15:00 / 18:00 MT5 candle label'},
-        {'Key':'VolumeFilter', 'Value':'global mean tick_volume from loaded dataset'},
+        {'Key':'VolumeFilter', 'Value':'causal expanding mean tick_volume shifted(1)'},
         {'Key':'LRR', 'Value':'(London High - London Low) / mean ATR14 within London'},
         {'Key':'Spread', 'Value':'dynamic spread from candle if available else fallback sp'},
         {'Key':'Commission', 'Value':'history -> order_check -> fallback (if live specs enabled)'},
         {'Key':'Slippage', 'Value':'not simulated randomly'},
         # ── Methodology notes ──────────────────────────────────────────────────
         {'Key':'Sharpe_cap0_method', 'Value':
-            'Monthly PnL / initial_cap_per_asset * 100, annualized sqrt(12). '
+            'Monthly PnL / initial_cap_per_asset * 100 over all months in sample window, '
+            'including zero-trade months; annualized sqrt(12). '
             'Denominator is fixed initial capital, not equity at month start. '
             'Consistent internally; not equity-weighted. Label: Sharpe_cap0.'},
         {'Key':'Sortino_cap0_method', 'Value':
-            'Same monthly base as Sharpe_cap0. Downside deviation from negative months only. '
+            'Same monthly base as Sharpe_cap0, including zero-trade months in sample window. '
             'Label: Sortino_cap0.'},
         {'Key':'MDD_trade_pct', 'Value':
             'Max drawdown from trade-by-trade equity array (one point per closed trade). '
@@ -640,7 +742,8 @@ def main():
             'Drawdown_Curve sheet: day-grouped equity = cap0 + cumsum(DailyPnL). '
             'No floor. Lower intra-day resolution than MDD_trade_pct.'},
         {'Key':'ReturnPct_cap0', 'Value':
-            'EquityCurve_FULL and Rolling_Sharpe sheets: DailyPnL / initial_cap * 100. '
+            'EquityCurve_FULL and Rolling_Sharpe sheets: DailyPnL / initial_cap * 100 '
+            'across all business days in sample window. '
             'Denominator is fixed initial capital, not current equity. '
             'Not a true daily return on equity.'},
     ])

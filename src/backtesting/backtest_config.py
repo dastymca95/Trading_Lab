@@ -10,7 +10,7 @@ np.random.seed(SEED)
 
 INITIAL_PER_ASSET  = 250.0
 GLOBAL_RISK_PCT    = 0.02      # ← CAMBIA SOLO ESTA LÍNEA
-USE_LIVE_SPECS     = True      # ← True = MT5 live specs | False = JSON/base
+USE_LIVE_SPECS     = False     # reproducible default; enable live specs only explicitly
 AUTO_ENABLE_SYMBOL = True
 COMMISSION_LOOKBACK_DAYS = 90
 
@@ -72,17 +72,3 @@ COMMISSION_MANUAL_RT = {
     'US500':  0.00,
     'DE40':   0.00,
 }
-
-# ─── Experiment CLI override (solo backtesting) ──────────────────────────────
-# Uso: python backtest_runner.py --be_atr_mult=0.40
-import sys as _sys
-for _arg in _sys.argv[1:]:
-    if _arg.startswith('--be_atr_mult='):
-        _val = float(_arg.split('=', 1)[1])
-        _active = list(ASSET_PARAMS_BASE.values())
-        _active += [OPTIONAL_PARAMS[k] for k in OPTIONAL_ASSETS if k in OPTIONAL_PARAMS]
-        for _p in _active:
-            _p['be_atr_mult'] = _val
-        print(f"  [CLI override] be_atr_mult = {_val}")
-        break
-del _sys

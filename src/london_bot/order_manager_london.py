@@ -66,6 +66,7 @@ def open_position(
     bot_magic: int,
     deviation: int,
     logger,
+    atr_signal: Optional[float] = None,
 ) -> Optional[PositionState]:
     """
     Envía una orden market BUY/SELL y devuelve el objeto posición si se ejecuta.
@@ -142,7 +143,10 @@ def open_position(
                         real_ticket = int(p_mt5.ticket)
                         break
 
-            be_level = float(real_price)
+            be_offset = float(asset_params.get("be_atr_mult", 0.0)) * float(atr_signal or 0.0)
+            if be_offset <= 0:
+                be_offset = float(spread_signal)
+            be_level = float(real_price + be_offset * direction)
 
             logger.info(
                 f"✅ {symbol} {'BUY' if direction == 1 else 'SELL'} {lots}L @ {real_price} | "

@@ -116,6 +116,11 @@ def check_signal(
         stop_loss = entry_price * (1 + asset_params["sl_pct"])
         stop_loss = min(stop_loss, london_high)
 
+    if (direction == 1 and stop_loss >= entry_price) or (
+        direction == -1 and stop_loss <= entry_price
+    ):
+        return None, "invalid_stop_geometry"
+
     stop_distance = max(
         abs(entry_price - stop_loss) + spread_signal,
         entry_price * 0.0015,

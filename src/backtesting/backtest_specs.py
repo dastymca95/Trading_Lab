@@ -8,10 +8,16 @@ try:
 except Exception:
     mt5 = None
 
-from backtest_config import (
-    GLOBAL_RISK_PCT, COMMISSION_LOOKBACK_DAYS, AUTO_ENABLE_SYMBOL,
-    USE_LIVE_SPECS, ASSET_PARAMS_BASE, OPTIONAL_ASSETS, OPTIONAL_PARAMS, COMMISSION_MANUAL_RT,
-)
+try:
+    from .backtest_config import (
+        GLOBAL_RISK_PCT, COMMISSION_LOOKBACK_DAYS, AUTO_ENABLE_SYMBOL,
+        USE_LIVE_SPECS, ASSET_PARAMS_BASE, OPTIONAL_ASSETS, OPTIONAL_PARAMS, COMMISSION_MANUAL_RT,
+    )
+except ImportError:
+    from backtest_config import (
+        GLOBAL_RISK_PCT, COMMISSION_LOOKBACK_DAYS, AUTO_ENABLE_SYMBOL,
+        USE_LIVE_SPECS, ASSET_PARAMS_BASE, OPTIONAL_ASSETS, OPTIONAL_PARAMS, COMMISSION_MANUAL_RT,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -152,16 +158,11 @@ def apply_live_specs(base_params: dict):
     out = {}
     connected = connect_mt5()
     if not connected:
-        print("  ⚠️  MT5 no disponible. Se usarán parámetros base/fallback.")
-        return apply_global_risk(base_params, GLOBAL_RISK_PCT)
+        raise RuntimeError("USE_LIVE_SPECS=True pero MT5 no está disponible.")
 
     for asset, p in base_params.items():
         if not safe_symbol(asset):
-            q = p.copy()
-            q['risk_pct'] = GLOBAL_RISK_PCT
-            q['comm_source'] = 'fallback_no_symbol'
-            out[asset] = q
-            continue
+            raise RuntimeError(f"USE_LIVE_SPECS=True pero {asset} no está disponible en MT5.")
 
         info = mt5.symbol_info(asset)
         q = p.copy()

@@ -3,7 +3,10 @@ import os
 import numpy as np
 import pandas as pd
 
-from backtest_config import TIMEFRAME_MINUTES
+try:
+    from .backtest_config import TIMEFRAME_MINUTES
+except ImportError:
+    from backtest_config import TIMEFRAME_MINUTES
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -79,6 +82,14 @@ def load_price_data(asset, data_dir, digits):
                   np.maximum(abs(df['high']-df['pc']),
                              abs(df['low']-df['pc'])))
     df['atr14'] = df['tr'].rolling(14).mean()
+    # Causal volume reference: expanding historical mean shifted by one bar.
+    # Preserves the existing "mean tick_volume" idea while removing look-ahead.
+    df['volume_mean_prior'] = (
+        df['tick_volume']
+        .expanding(min_periods=1)
+        .mean()
+        .shift(1)
+    )
 
     point = 10 ** (-digits) if digits > 0 else 1.0
     if 'spread' in df.columns and df['spread'].notna().any():
@@ -95,7 +106,12 @@ def load_price_data(asset, data_dir, digits):
     lr['lrr'] = (lr['lh'] - lr['ll']) / lr['lam'].replace(0, np.nan)
 
     vm = df['tick_volume'].mean()
+    vm_last_causal = (
+        float(df['volume_mean_prior'].dropna().iloc[-1])
+        if df['volume_mean_prior'].notna().any()
+        else float('nan')
+    )
     print(f"  ✓ {asset} [{fmt}]: {len(df):,} velas | "
           f"{df['time'].iloc[0].date()} → {df['time'].iloc[-1].date()} | "
-          f"spread={spread_src} | vm={vm:.1f}")
+          f"spread={spread_src} | vm_last_causal={vm_last_causal:.1f}")
     return df, lr, vm, qc

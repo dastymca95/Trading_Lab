@@ -415,9 +415,10 @@ def main() -> None:
                     }
 
                     # raw_signal/volume inference from check_signal reason code
-                    _VOL_PASS_TRUE  = {"lrr_fail", "no_direction", "stop_distance_zero",
-                                       "lots_zero", "ok", "ok_force_direction"}
-                    _RAW_SIG_TRUE   = {"ok", "ok_force_direction", "stop_distance_zero", "lots_zero"}
+                    _VOL_PASS_TRUE  = {"lrr_fail", "no_direction", "invalid_stop_geometry",
+                                       "stop_distance_zero", "lots_zero", "ok", "ok_force_direction"}
+                    _RAW_SIG_TRUE   = {"ok", "ok_force_direction", "invalid_stop_geometry",
+                                       "stop_distance_zero", "lots_zero"}
                     _RAW_SIG_FALSE  = {"no_direction"}
 
                     def _write_audit(action: str, reason: str,
@@ -597,6 +598,7 @@ def main() -> None:
                                 signal_price=sig.ep,
                                 spread_signal=sig.spread_signal,
                                 signal_type=sig.stype,
+                                atr_signal=sig.atr,
                                 bot_magic=config["bot"]["magic"],
                                 deviation=config["execution"]["deviation"],
                                 logger=log,

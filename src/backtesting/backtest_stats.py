@@ -2,7 +2,10 @@ import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
 
-from backtest_config import BOOTSTRAP_RUNS, MONTE_CARLO_RUNS, ROLLING_SHARPE_WIN
+try:
+    from .backtest_config import BOOTSTRAP_RUNS, MONTE_CARLO_RUNS, ROLLING_SHARPE_WIN
+except ImportError:
+    from backtest_config import BOOTSTRAP_RUNS, MONTE_CARLO_RUNS, ROLLING_SHARPE_WIN
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -51,19 +54,42 @@ def monte_carlo_dd(pnl_arr, cap0, runs=MONTE_CARLO_RUNS):
     )
 
 
-def daily_equity(t, cap0):
+def _resolve_sample_bounds(t, sample_start=None, sample_end=None):
+    trade_dates = pd.to_datetime(t['Date']).dt.normalize()
+    start = sample_start or t.attrs.get('sample_start') or trade_dates.min()
+    end = sample_end or t.attrs.get('sample_end') or trade_dates.max()
+    start = pd.Timestamp(start).normalize()
+    end = pd.Timestamp(end).normalize()
+    if end < start:
+        end = start
+    return start, end
+
+
+def _business_day_index(sample_start, sample_end):
+    return pd.bdate_range(sample_start, sample_end)
+
+
+def daily_equity(t, cap0, sample_start=None, sample_end=None):
     if len(t) == 0:
         return pd.DataFrame(columns=['Date','DailyPnL','Equity','ReturnPct','DrawdownPct'])
-    d = t.groupby('Date', as_index=False)['PnL Neto USD'].sum().sort_values('Date')
-    d['Equity']     = cap0 + d['PnL Neto USD'].cumsum()
-    d['ReturnPct']  = d['PnL Neto USD'] / cap0 * 100.0
+    sample_start, sample_end = _resolve_sample_bounds(t, sample_start, sample_end)
+    idx = _business_day_index(sample_start, sample_end)
+    daily_pnl = (
+        t.groupby(pd.to_datetime(t['Date']).dt.normalize())['PnL Neto USD']
+        .sum()
+        .reindex(idx, fill_value=0.0)
+    )
+    d = daily_pnl.rename_axis('Date').reset_index(name='DailyPnL')
+    d['Date'] = d['Date'].dt.strftime('%Y-%m-%d')
+    d['Equity']     = cap0 + d['DailyPnL'].cumsum()
+    d['ReturnPct']  = d['DailyPnL'] / cap0 * 100.0
     pk = d['Equity'].cummax()
     d['DrawdownPct'] = (d['Equity'] - pk) / pk * 100.0
-    return d.rename(columns={'PnL Neto USD':'DailyPnL'})
+    return d
 
 
-def rolling_sharpe(t, cap0, window=ROLLING_SHARPE_WIN):
-    d = daily_equity(t, cap0)
+def rolling_sharpe(t, cap0, window=ROLLING_SHARPE_WIN, sample_start=None, sample_end=None):
+    d = daily_equity(t, cap0, sample_start=sample_start, sample_end=sample_end)
     if len(d) == 0: return pd.DataFrame()
     r = d['ReturnPct'] / 100.0
     d['RollingSharpe'] = (r.rolling(window).mean() / r.rolling(window).std(ddof=1)) * np.sqrt(252)
@@ -82,8 +108,8 @@ def monthly_heatmap(t):
     return heat.rename(columns=names).reset_index()
 
 
-def return_distribution(t, cap0):
-    d = daily_equity(t, cap0)
+def return_distribution(t, cap0, sample_start=None, sample_end=None):
+    d = daily_equity(t, cap0, sample_start=sample_start, sample_end=sample_end)
     if len(d) == 0: return pd.DataFrame(columns=['Metric','Value'])
     x = d['ReturnPct'].values
     rows = [
@@ -101,7 +127,7 @@ def return_distribution(t, cap0):
     return pd.DataFrame(rows, columns=['Metric','Value'])
 
 
-def calc_metrics(t, e, cap0):
+def calc_metrics(t, e, cap0, sample_start=None, sample_end=None):
     if len(t) == 0:
         return {}
 
@@ -119,12 +145,20 @@ def calc_metrics(t, e, cap0):
     gl = abs(lo['PnL Neto USD'].sum()) if len(lo) > 0 else 0.001
     pf = gp / gl
 
-    days = t['Date'].nunique()
+    sample_start, sample_end = _resolve_sample_bounds(t, sample_start, sample_end)
+    day_index = _business_day_index(sample_start, sample_end)
+    days = len(day_index)
     aw = w['PnL Neto USD'].mean() if len(w) > 0 else 0
     al = lo['PnL Neto USD'].mean() if len(lo) > 0 else 0
     exp = t['PnL Neto USD'].mean()
 
-    monthly = t.groupby('Mes')['PnL Neto USD'].sum()
+    month_index = pd.period_range(sample_start, sample_end, freq='M')
+    monthly = (
+        t.groupby(pd.to_datetime(t['Date']).dt.to_period('M'))['PnL Neto USD']
+        .sum()
+        .reindex(month_index, fill_value=0.0)
+    )
+    monthly.index = monthly.index.astype(str)
     mret = monthly / cap0 * 100
 
     mret_std = mret.std(ddof=1)
@@ -149,7 +183,12 @@ def calc_metrics(t, e, cap0):
     )
     calmar = ann / abs(mdd) if mdd != 0 else 0
 
-    daily_pnl = t.groupby('Date')['PnL Neto USD'].sum().sort_index()
+    daily_pnl = (
+        t.groupby(pd.to_datetime(t['Date']).dt.normalize())['PnL Neto USD']
+        .sum()
+        .reindex(day_index, fill_value=0.0)
+        .sort_index()
+    )
     t_p = scipy_stats.ttest_1samp(daily_pnl, 0).pvalue if len(daily_pnl) > 1 else 1.0
     sign_p = sign_test_pvalue(daily_pnl.values)
     ci_lo, ci_hi = bootstrap_mean_ci(daily_pnl.values)

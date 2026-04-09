@@ -6,7 +6,7 @@ DATA_DIR   = os.path.join(_REPO_ROOT, "data", "backtesting")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # Leer archivo parquet
-df = pd.read_parquet(os.path.join(DATA_DIR, "US30_Data.parquet"))
+df = pd.read_parquet(os.path.join(DATA_DIR, "USTEC_Data.parquet"))
 
 # Convertir columna time
 df["time"] = pd.to_datetime(df["time"])

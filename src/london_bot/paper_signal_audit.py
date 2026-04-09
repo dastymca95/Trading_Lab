@@ -179,7 +179,7 @@ def compute_and_write_session_summary(
         # Reasons that represent a technical "no signal" (not blocked by filters)
         _no_sig_reasons = {
             "context_unavailable", "atr_zero", "lrr_fail",
-            "no_direction", "stop_distance_zero", "lots_zero",
+            "no_direction", "invalid_stop_geometry", "stop_distance_zero", "lots_zero",
         }
 
         rows = []
