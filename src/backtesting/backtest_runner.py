@@ -181,21 +181,24 @@ def _build_daily_filter(asset, df, p):
         return None
 
     # --- LOW_VOL base filter ---
+    # Causal semantics: trade day D is gated by the last fully completed
+    # trading day ATR (D-1), ranked against prior completed days only.
     daily_atr = df.groupby('date')['atr14'].mean()
+    atr_ref = daily_atr.shift(1)
     rolling_thr = (
-        daily_atr
+        atr_ref
         .rolling(lv_win, min_periods=lv_win // 2)
         .quantile(lv_pct / 100.0)
     )
     allowed = frozenset(
         d for d in daily_atr.index
-        if pd.notna(rolling_thr.loc[d]) and daily_atr.loc[d] <= rolling_thr.loc[d]
+        if pd.notna(atr_ref.loc[d]) and pd.notna(rolling_thr.loc[d]) and atr_ref.loc[d] <= rolling_thr.loc[d]
     )
 
     # --- Absolute ATR cap (US500 lenient guardrail: p75 of LOW_VOL non-2022 ≈ 1.45) ---
     atr_cap = p.get('atr_cap')
     if atr_cap is not None:
-        allowed = frozenset(d for d in allowed if daily_atr.loc[d] <= atr_cap)
+        allowed = frozenset(d for d in allowed if atr_ref.loc[d] <= atr_cap)
 
     # --- roll_mfe quality gate (USTEC: rolling median of session mfe/mae > threshold) ---
     roll_mfe_n   = p.get('roll_mfe_n')
@@ -484,7 +487,7 @@ def main():
     specs_mode = 'live_mt5' if USE_LIVE_SPECS else 'json/base'
     print(f"\n  Specs      : {specs_mode}")
     print(f"  Risk/asset : {GLOBAL_RISK_PCT:.2%}  |  Capital : ${INITIAL_PER_ASSET:.0f}/asset")
-    print(f"  Period     : full history → {TRAIN_END.date()}  /  test from {TEST_START.date()}")
+    print(f"  Period     : all history  /  test from {TEST_START.date()}")
     print(f"  Assets     : {', '.join(final_assets.keys())}")
     print(f"  Data dir   : {DATA_DIR}")
 
@@ -527,18 +530,23 @@ def main():
     results_test = {}
     all_full = []
     all_test = []
+    asset_full_bounds = {}
 
     for asset, (df, lr, vm) in asset_data.items():
         p = final_assets[asset]
         cap = INITIAL_PER_ASSET
 
-        t_f, e_f = run_backtest(asset, df, lr, vm, p, cap, None, None, 'FULL')
+        t_f, e_f = run_backtest(asset, df, lr, vm, p, cap, None, None, 'ALL')
         m_f = calc_metrics(
             t_f, e_f, cap,
             sample_start=t_f.attrs.get('sample_start'),
             sample_end=t_f.attrs.get('sample_end'),
         )
         results_full[asset] = m_f
+        asset_full_bounds[asset] = (
+            t_f.attrs.get('sample_start'),
+            t_f.attrs.get('sample_end'),
+        )
         if len(t_f) > 0:
             t_f['asset'] = asset
             all_full.append(t_f)
@@ -569,7 +577,7 @@ def main():
         print(_RSEP)
         print(_RHDR)
         print(_RSEP)
-        print(_fmt_m(m_f, 'FULL'))
+        print(_fmt_m(m_f, 'ALL'))
         print(_fmt_m(m_t, 'TEST'))
         print(_RSEP)
 
@@ -587,7 +595,7 @@ def main():
     print(_RSEP)
     print(_RHDR)
     print(_RSEP)
-    print(_fmt_m(pm_full, 'FULL'))
+    print(_fmt_m(pm_full, 'ALL'))
     print(_fmt_m(pm_test if pm_test else {}, 'TEST'))
     print(_RSEP)
     print(f"   * MDD%: trade-by-trade equity (intra-day resolution). Differs from daily_equity MDD.")
@@ -634,7 +642,7 @@ def main():
         cell.alignment = Alignment(horizontal='center', wrap_text=True)
 
     port_df = pd.DataFrame([{
-        'Sample':'FULL',
+        'Sample':'ALL',
         'UseLiveSpecs': USE_LIVE_SPECS,
         'GlobalRiskPct': GLOBAL_RISK_PCT,
         **{k:v for k,v in pm_full.items() if k not in ['monthly','monthly_ret','equity']}
@@ -661,10 +669,11 @@ def main():
     eq_r=[]; dd_r=[]; rs_r=[]
     for asset in sorted(all_t_full['Activo'].unique()):
         t = all_t_full[all_t_full['Activo']==asset].copy()
+        sample_start, sample_end = asset_full_bounds.get(asset, (None, None))
         d = daily_equity(
             t, INITIAL_PER_ASSET,
-            sample_start=t.attrs.get('sample_start'),
-            sample_end=t.attrs.get('sample_end'),
+            sample_start=sample_start,
+            sample_end=sample_end,
         )
         if len(d)>0:
             x=d.copy(); x['Asset']=asset
@@ -673,8 +682,8 @@ def main():
             y=d.copy(); y['Asset']=asset; dd_r.append(y[['Date','Asset','DrawdownPct']])
             rs=rolling_sharpe(
                 t, INITIAL_PER_ASSET,
-                sample_start=t.attrs.get('sample_start'),
-                sample_end=t.attrs.get('sample_end'),
+                sample_start=sample_start,
+                sample_end=sample_end,
             )
             if len(rs)>0:
                 rs['Asset']=asset
@@ -759,3 +768,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

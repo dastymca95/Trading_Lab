@@ -21,9 +21,10 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from backtest_config import TEST_START, OPTIONAL_PARAMS
+from backtest_config import TEST_START
 from backtest_data   import load_price_data
 from backtest_runner import run_backtest
+from backtest_specs  import resolve_asset_params
 from backtest_stats  import calc_metrics
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,7 +34,7 @@ W          = 86
 
 # ─── USTEC locked baseline ────────────────────────────────────────────────────
 # risk_pct / sp / comm are swept below; all other keys stay locked.
-_LOCKED = dict(OPTIONAL_PARAMS['USTEC'])
+_LOCKED = dict(resolve_asset_params(DATA_DIR)['USTEC'])
 
 # ─── Cost scenarios ───────────────────────────────────────────────────────────
 # stress_spread_mult applies to real spread_px from the MT5 parquet.

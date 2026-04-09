@@ -35,9 +35,10 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from backtest_config import TEST_START, OPTIONAL_PARAMS
+from backtest_config import TEST_START
 from backtest_data   import load_price_data
 from backtest_runner import run_backtest
+from backtest_specs  import resolve_asset_params
 from backtest_stats  import calc_metrics
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -45,7 +46,7 @@ DATA_DIR   = os.path.join(_REPO_ROOT, "data", "backtesting")
 CAP        = 250.0
 W          = 88
 
-_LOCKED = dict(OPTIONAL_PARAMS['USTEC'])
+_LOCKED = dict(resolve_asset_params(DATA_DIR)['USTEC'])
 
 # ─── Stress scenarios ─────────────────────────────────────────────────────────
 # (label, stress_spread_mult, comm, entry_slippage_pts)

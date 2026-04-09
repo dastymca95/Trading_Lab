@@ -23,9 +23,10 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from backtest_config import GLOBAL_RISK_PCT, TRAIN_END, TEST_START
+from backtest_config import GLOBAL_RISK_PCT, TEST_START
 from backtest_data   import load_price_data
 from backtest_runner import run_backtest
+from backtest_specs  import resolve_asset_params
 from backtest_stats  import calc_metrics
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -33,12 +34,7 @@ DATA_DIR = os.path.join(_REPO_ROOT, "data", "backtesting")
 CAP      = 250.0
 
 # ─── Shared base params ───────────────────────────────────────────────────────
-_BASE = {
-    'sl_pct':0.003, 'trail_mult':3.0, 'risk_pct':GLOBAL_RISK_PCT, 'lrr_min':1.0,
-    'dow':[0,1,2,3,4], 'atr_mult':1.5,
-    'comm':0.00, 'cs':1, 'ml':0.1, 'step':0.1, 'sp':1.0, 'jpy':False, 'digits':2,
-    'be_atr_mult':0.75,
-}
+_BASE = {}
 
 # ─── 3 variants ───────────────────────────────────────────────────────────────
 VARIANTS = [
@@ -118,18 +114,43 @@ def main():
         f"| {len(df):,} bars\n"
     )
 
+    base = dict(resolve_asset_params(DATA_DIR)['USTEC'])
+    base['risk_pct'] = GLOBAL_RISK_PCT
+    variants = [
+        (
+            'BASE',
+            'No filter, hours=[15,18], bidirectional',
+            {**base, 'hours': [15, 18], 'force_direction': None,
+             'low_vol_pct': None, 'low_vol_win': None, 'roll_mfe_n': None, 'roll_mfe_min': None},
+        ),
+        (
+            'REFINED filter only',
+            'LOW_VOL+roll_mfe, hours=[15,18], bidirectional',
+            {**base, 'hours': [15, 18], 'force_direction': None,
+             'low_vol_pct': 50, 'low_vol_win': 90,
+             'roll_mfe_n': 20, 'roll_mfe_min': 1.0},
+        ),
+        (
+            'OPERATIONAL',
+            'LOW_VOL+roll_mfe, hours=[18], forced LONG',
+            {**base, 'hours': [18], 'force_direction': 1,
+             'low_vol_pct': 50, 'low_vol_win': 90,
+             'roll_mfe_n': 20, 'roll_mfe_min': 1.0},
+        ),
+    ]
+
     full_rows = []
     test_rows = []
 
-    for name, _, p in VARIANTS:
-        t_f, e_f = run_backtest('USTEC', df, lr, vm, p, CAP, None,        None,       'FULL')
+    for name, _, p in variants:
+        t_f, e_f = run_backtest('USTEC', df, lr, vm, p, CAP, None,        None,       'ALL')
         t_t, e_t = run_backtest('USTEC', df, lr, vm, p, CAP, TEST_START,  None,       'TEST')
-        m_f = calc_metrics(t_f, e_f, CAP)
-        m_t = calc_metrics(t_t, e_t, CAP)
+        m_f = calc_metrics(t_f, e_f, CAP, sample_start=t_f.attrs.get('sample_start'), sample_end=t_f.attrs.get('sample_end'))
+        m_t = calc_metrics(t_t, e_t, CAP, sample_start=t_t.attrs.get('sample_start'), sample_end=t_t.attrs.get('sample_end'))
         full_rows.append((name, _row(m_f)))
         test_rows.append((name, _row(m_t)))
 
-    _print_table(full_rows, 'FULL  (all history → 2024-12-31)')
+    _print_table(full_rows, 'ALL   (all available history)')
     _print_table(test_rows, 'TEST  (2025-01-01 → present)')
 
     # ── Delta analysis ─────────────────────────────────────────────────────────
@@ -161,3 +182,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

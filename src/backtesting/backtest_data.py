@@ -93,7 +93,9 @@ def load_price_data(asset, data_dir, digits):
 
     point = 10 ** (-digits) if digits > 0 else 1.0
     if 'spread' in df.columns and df['spread'].notna().any():
-        df['spread_px'] = df['spread'].ffill().bfill().fillna(0) * point
+        # Forward-fill only: preserve causal spread handling and keep leading
+        # gaps as NaN so the engine can fall back to the configured hardcoded spread.
+        df['spread_px'] = pd.to_numeric(df['spread'], errors='coerce').ffill() * point
         spread_src = 'dynamic_mt5'
     else:
         df['spread_px'] = np.nan

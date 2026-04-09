@@ -68,7 +68,7 @@ RISK_GRID = [
 from backtest_specs import (
     connect_mt5, safe_symbol,
     get_live_commission_rt,
-    load_broker_specs_json, apply_json_specs,
+    load_broker_specs_json, apply_json_specs, resolve_asset_params,
 )
 
 
@@ -125,19 +125,7 @@ def apply_live_specs(base_params: dict):
 
 
 def resolve_asset_base_params(data_dir):
-    merged = {**ASSET_PARAMS_BASE}
-    for k, v in OPTIONAL_PARAMS.items():
-        merged[k] = v.copy()
-
-    if USE_LIVE_SPECS:
-        print("1. Cargando specs live desde MT5...")
-        params = apply_live_specs(merged)
-    else:
-        print("1. Buscando specs del broker en JSON...")
-        specs = load_broker_specs_json(data_dir)
-        params = apply_json_specs(specs, merged)
-
-    return params
+    return resolve_asset_params(data_dir)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -270,14 +258,22 @@ def main():
             cap = INITIAL_PER_ASSET
 
             t_f, e_f = run_backtest(asset, df, lr, vm, p, cap, None, None, 'FULL')
-            m_f = calc_metrics(t_f, e_f, cap)
+            m_f = calc_metrics(
+                t_f, e_f, cap,
+                sample_start=t_f.attrs.get('sample_start'),
+                sample_end=t_f.attrs.get('sample_end'),
+            )
             results_full[asset] = m_f
             if len(t_f) > 0:
                 t_f['asset'] = asset
                 all_full.append(t_f)
 
             t_t, e_t = run_backtest(asset, df, lr, vm, p, cap, TEST_START, None, 'TEST')
-            m_t = calc_metrics(t_t, e_t, cap)
+            m_t = calc_metrics(
+                t_t, e_t, cap,
+                sample_start=t_t.attrs.get('sample_start'),
+                sample_end=t_t.attrs.get('sample_end'),
+            )
             results_test[asset] = m_t
             if len(t_t) > 0:
                 all_test.append(t_t)
@@ -303,6 +299,8 @@ def main():
             continue
 
         all_t_full = pd.concat(all_full).sort_values('Fecha Apertura').reset_index(drop=True)
+        all_t_full.attrs['sample_start'] = min(pd.Timestamp(t.attrs.get('sample_start')) for t in all_full)
+        all_t_full.attrs['sample_end'] = max(pd.Timestamp(t.attrs.get('sample_end')) for t in all_full)
         cap0 = INITIAL_PER_ASSET * len(results_full)
         cap  = cap0
         eq = [cap]
@@ -310,17 +308,31 @@ def main():
             cap = max(cap + pnl, 0.01)
             eq.append(cap)
         eq = np.array(eq)
-        pm_full = calc_metrics(all_t_full, eq, cap0)
+        pm_full = calc_metrics(
+            all_t_full,
+            eq,
+            cap0,
+            sample_start=all_t_full.attrs.get('sample_start'),
+            sample_end=all_t_full.attrs.get('sample_end'),
+        )
 
         if all_test:
             all_t_test = pd.concat(all_test).sort_values('Fecha Apertura').reset_index(drop=True)
+            all_t_test.attrs['sample_start'] = min(pd.Timestamp(t.attrs.get('sample_start')) for t in all_test)
+            all_t_test.attrs['sample_end'] = max(pd.Timestamp(t.attrs.get('sample_end')) for t in all_test)
             cap = cap0
             eq_t = [cap]
             for pnl in all_t_test['PnL Neto USD'].values:
                 cap = max(cap + pnl, 0.01)
                 eq_t.append(cap)
             eq_t = np.array(eq_t)
-            pm_test = calc_metrics(all_t_test, eq_t, cap0)
+            pm_test = calc_metrics(
+                all_t_test,
+                eq_t,
+                cap0,
+                sample_start=all_t_test.attrs.get('sample_start'),
+                sample_end=all_t_test.attrs.get('sample_end'),
+            )
         else:
             pm_test = {}
 
@@ -407,7 +419,7 @@ def main():
         {'Key':'RISK_GRID', 'Value':', '.join([str(x) for x in RISK_GRID])},
         {'Key':'PriceSource', 'Value':'parquet_first_then_xlsx'},
         {'Key':'SignalCandle', 'Value':'15:00 / 18:00 MT5 candle label'},
-        {'Key':'VolumeFilter', 'Value':'global mean tick_volume from loaded dataset'},
+        {'Key':'VolumeFilter', 'Value':'causal expanding mean tick_volume shifted(1) on the signal bar'},
         {'Key':'LRR', 'Value':'(London High - London Low) / mean ATR14 within London'},
         {'Key':'Spread', 'Value':'dynamic spread from candle if available else fallback sp'},
         {'Key':'Commission', 'Value':'history -> order_check -> fallback (if USE_LIVE_SPECS=True)'},

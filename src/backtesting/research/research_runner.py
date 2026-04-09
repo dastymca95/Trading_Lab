@@ -151,10 +151,11 @@ def compute_daily_vol_regime(
     """
     Classify each trading date as HIGH_VOL or LOW_VOL.
 
-    Method: daily ATR = mean of bar-level atr14 values per day.
-    Threshold = rolling `percentile`-th quantile over `window` days.
-    LOW_VOL  = daily_atr <= threshold  (bottom `percentile`% of days)
-    HIGH_VOL = daily_atr >  threshold
+    Method: use the last fully completed trading day ATR as the regime
+    reference for the next day. Threshold = rolling `percentile`-th quantile
+    over prior completed days only.
+    LOW_VOL  = atr_ref_prev_day <= threshold
+    HIGH_VOL = atr_ref_prev_day >  threshold
 
     Parameters
     ----------
@@ -170,11 +171,14 @@ def compute_daily_vol_regime(
     pd.Series indexed by datetime.date, values 'HIGH_VOL' or 'LOW_VOL'.
     """
     daily_atr    = df.groupby('date')['atr14'].mean()
-    rolling_thr  = daily_atr.rolling(window, min_periods=window // 2).quantile(
+    atr_ref      = daily_atr.shift(1)
+    rolling_thr  = atr_ref.rolling(window, min_periods=window // 2).quantile(
         percentile / 100.0
     )
-    regime = pd.Series('LOW_VOL', index=daily_atr.index, dtype=object)
-    regime[daily_atr > rolling_thr] = 'HIGH_VOL'
+    valid = pd.notna(atr_ref) & pd.notna(rolling_thr)
+    regime = pd.Series(np.nan, index=daily_atr.index, dtype=object)
+    regime[valid & (atr_ref <= rolling_thr)] = 'LOW_VOL'
+    regime[valid & (atr_ref > rolling_thr)] = 'HIGH_VOL'
     return regime
 
 

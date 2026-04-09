@@ -30,10 +30,10 @@ sys.path.insert(0, _THIS_DIR)
 
 from backtest_config import (
     GLOBAL_RISK_PCT, INITIAL_PER_ASSET, TEST_START,
-    ASSET_PARAMS_BASE, OPTIONAL_PARAMS, OPTIONAL_ASSETS,
 )
 from backtest_data   import load_price_data
 from backtest_runner import run_backtest
+from backtest_specs  import resolve_asset_params
 from backtest_stats  import calc_metrics
 
 DATA_DIR = os.path.join(_REPO_ROOT, "data", "backtesting")
@@ -41,14 +41,7 @@ CAP_PER  = INITIAL_PER_ASSET
 
 # ─── Operational params (mirrors backtest_runner without live MT5 call) ───────
 # Commissions for US-index assets are 0 — live spec makes no difference here.
-_PARAMS = {}
-for k, v in ASSET_PARAMS_BASE.items():
-    _PARAMS[k] = {**v, 'risk_pct': GLOBAL_RISK_PCT}
-for k in OPTIONAL_ASSETS:
-    if k in OPTIONAL_PARAMS:
-        _PARAMS[k] = {**OPTIONAL_PARAMS[k], 'risk_pct': GLOBAL_RISK_PCT}
-
-ASSETS_TO_TEST = [a for a in ['USTEC', 'US500', 'US30', 'DE40'] if a in _PARAMS]
+ASSETS_TO_TEST = ['USTEC', 'US500', 'US30', 'DE40']
 
 COMBINATIONS = [
     ('USTEC only',    ['USTEC']),
@@ -67,12 +60,20 @@ def _agg_metrics(trade_dfs, cap0):
     if not dfs:
         return {}
     all_t = pd.concat(dfs).sort_values('Fecha Apertura').reset_index(drop=True)
+    all_t.attrs['sample_start'] = min(pd.Timestamp(d.attrs.get('sample_start')) for d in dfs)
+    all_t.attrs['sample_end'] = max(pd.Timestamp(d.attrs.get('sample_end')) for d in dfs)
     cap = cap0
     eq  = [cap]
     for pnl in all_t['PnL Neto USD'].values:
         cap = max(cap + pnl, 0.01)
         eq.append(cap)
-    return calc_metrics(all_t, np.array(eq), cap0)
+    return calc_metrics(
+        all_t,
+        np.array(eq),
+        cap0,
+        sample_start=all_t.attrs.get('sample_start'),
+        sample_end=all_t.attrs.get('sample_end'),
+    )
 
 
 # ─── Display helpers ──────────────────────────────────────────────────────────
@@ -109,6 +110,8 @@ def main():
     print(f"\n  Combinations: {len(COMBINATIONS)}")
     for name, assets in COMBINATIONS:
         print(f"    {name:<16}  {assets}")
+    params = resolve_asset_params(DATA_DIR)
+    params = {asset: params[asset] for asset in ASSETS_TO_TEST if asset in params}
 
     # ── Step 1: load price data ───────────────────────────────────────────────
     print(f"\n{'─'*W}")
@@ -117,7 +120,9 @@ def main():
 
     asset_data = {}
     for asset in ASSETS_TO_TEST:
-        p = _PARAMS[asset]
+        if asset not in params:
+            continue
+        p = params[asset]
         df, lr, vm, qc = load_price_data(asset, DATA_DIR, p['digits'])
         if df is None:
             print(f"  ⚠  {asset}: datos no encontrados — excluido")
@@ -137,7 +142,7 @@ def main():
     trades_test = {}   # asset → DataFrame (TEST period)
 
     for asset, (df, lr, vm) in asset_data.items():
-        p = _PARAMS[asset]
+        p = params[asset]
         print(f"  {asset}...", end=' ', flush=True)
         t_f, _ = run_backtest(asset, df, lr, vm, p, CAP_PER, None,       None,  'FULL')
         t_t, _ = run_backtest(asset, df, lr, vm, p, CAP_PER, TEST_START, None,  'TEST')

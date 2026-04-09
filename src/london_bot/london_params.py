@@ -238,7 +238,9 @@ def build_daily_filter(
         frozenset of allowed date objects, or None if no filter is configured
         for this asset (all days allowed).
 
-    Mirrors backtest_runner._build_daily_filter exactly (causal, shift=1, no look-ahead).
+    Mirrors backtest_runner._build_daily_filter exactly.
+    Causal semantics: trading day D is gated by the last fully completed
+    trading day ATR (D-1), never by the partially observed ATR of D itself.
     Must be called at startup and refreshed at each new trading day.
 
     Data source: tries data/parquet/ first, then data/backtesting/. Requires M2 parquet
@@ -286,14 +288,15 @@ def build_daily_filter(
 
     # LOW_VOL base filter
     daily_atr = df.groupby("_date")["atr14"].mean()
+    atr_ref = daily_atr.shift(1)
     rolling_thr = (
-        daily_atr
+        atr_ref
         .rolling(lv_win, min_periods=lv_win // 2)
         .quantile(lv_pct / 100.0)
     )
     allowed: FrozenSet[date] = frozenset(
         d for d in daily_atr.index
-        if pd.notna(rolling_thr.loc[d]) and daily_atr.loc[d] <= rolling_thr.loc[d]
+        if pd.notna(atr_ref.loc[d]) and pd.notna(rolling_thr.loc[d]) and atr_ref.loc[d] <= rolling_thr.loc[d]
     )
 
     # roll_mfe quality gate

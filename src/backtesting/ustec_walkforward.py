@@ -22,9 +22,9 @@ import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from backtest_config import OPTIONAL_PARAMS
 from backtest_data   import load_price_data
 from backtest_runner import run_backtest
+from backtest_specs  import resolve_asset_params
 from backtest_stats  import calc_metrics
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -32,7 +32,7 @@ DATA_DIR   = os.path.join(_REPO_ROOT, "data", "backtesting")
 CAP        = 250.0
 W          = 88
 
-_LOCKED = dict(OPTIONAL_PARAMS['USTEC'])
+_LOCKED = dict(resolve_asset_params(DATA_DIR)['USTEC'])
 
 
 # ─── Display helpers ──────────────────────────────────────────────────────────
@@ -76,16 +76,25 @@ def _sep():
 def year_windows(df):
     """One window per calendar year present in data."""
     years = sorted(df['time'].dt.year.unique())
+    data_start = df['time'].min().normalize()
+    data_end = df['time'].max().normalize()
     windows = []
     for y in years:
         start = pd.Timestamp(f"{y}-01-01")
         end   = pd.Timestamp(f"{y+1}-01-01")
-        windows.append((str(y), start, end))
+        is_partial = (
+            (y == data_start.year and (data_start.month != 1 or data_start.day != 1)) or
+            (y == data_end.year and (data_end.month != 12 or data_end.day != 31))
+        )
+        label = f"{y}{' [PARTIAL]' if is_partial else ''}"
+        windows.append((label, start, end, is_partial))
     return windows
 
 
 def rolling_windows(df, months_len=12, months_step=3):
     """Rolling windows of fixed length, stepping forward."""
+    data_start = df['time'].min().normalize()
+    data_end = df['time'].max().normalize()
     t_min = df['time'].min().to_period('M').to_timestamp()
     t_max = df['time'].max().to_period('M').to_timestamp() + pd.offsets.MonthEnd(1)
     windows = []
@@ -94,8 +103,10 @@ def rolling_windows(df, months_len=12, months_step=3):
         end = start + pd.DateOffset(months=months_len)
         if end > t_max + pd.DateOffset(months=months_step):
             break
-        label = f"{start.strftime('%Y-%m')}→{(end - pd.Timedelta(days=1)).strftime('%Y-%m')}"
-        windows.append((label, start, end))
+        requested_end = end - pd.Timedelta(days=1)
+        is_partial = start < data_start or requested_end > data_end
+        label = f"{start.strftime('%Y-%m')}→{requested_end.strftime('%Y-%m')}{' [PARTIAL]' if is_partial else ''}"
+        windows.append((label, start, end, is_partial))
         start += pd.DateOffset(months=months_step)
     return windows
 
@@ -161,7 +172,7 @@ def main():
 
     def run_window(start, end):
         t, e = run_backtest('USTEC', df, lr, vm, _LOCKED, CAP, start, end, 'WF')
-        return calc_metrics(t, e, CAP)
+        return calc_metrics(t, e, CAP, sample_start=t.attrs.get('sample_start'), sample_end=t.attrs.get('sample_end'))
 
     # ═════════════════════════════════════════════════════════════════════════
     # A) CALENDAR YEAR SLICES
@@ -171,6 +182,8 @@ def main():
 
     wins_yr = year_windows(df)
     print(f"\n  Years detected: {[w[0] for w in wins_yr]}")
+    if any(w[3] for w in wins_yr):
+        print("  Note: partial calendar years are shown for traceability and excluded from summary/stability scoring.")
 
     _sub("Results by year")
     print(_hdr(lw=6))
@@ -178,14 +191,14 @@ def main():
 
     yr_metrics = []
     yr_labels  = []
-    for label, start, end in wins_yr:
+    for label, start, end, is_partial in wins_yr:
         m = run_window(start, end)
         yr_metrics.append(m)
         yr_labels.append(label)
         print(_row(m, label, lw=6))
 
     _sub("Summary — year slices")
-    _summary(yr_metrics, yr_labels)
+    _summary([m for lb, m in zip(yr_labels, yr_metrics) if '[PARTIAL]' not in lb], [lb for lb in yr_labels if '[PARTIAL]' not in lb])
 
     # ═════════════════════════════════════════════════════════════════════════
     # B) ROLLING 12m / STEP 3m
@@ -197,6 +210,8 @@ def main():
 
     wins_roll = rolling_windows(df, months_len=12, months_step=3)
     print(f"\n  Windows: {len(wins_roll)}")
+    if any(w[3] for w in wins_roll):
+        print("  Note: partial rolling windows are shown for traceability and excluded from summary/stability scoring.")
 
     _sub("Results — rolling windows")
     print(_hdr(lw=20))
@@ -204,22 +219,22 @@ def main():
 
     roll_metrics = []
     roll_labels  = []
-    for label, start, end in wins_roll:
+    for label, start, end, is_partial in wins_roll:
         m = run_window(start, end)
         roll_metrics.append(m)
         roll_labels.append(label)
         print(_row(m, label, lw=20))
 
     _sub("Summary — rolling windows")
-    _summary(roll_metrics, roll_labels)
+    _summary([m for lb, m in zip(roll_labels, roll_metrics) if '[PARTIAL]' not in lb], [lb for lb in roll_labels if '[PARTIAL]' not in lb])
 
     # ═════════════════════════════════════════════════════════════════════════
     # STABILITY VERDICT
     # ═════════════════════════════════════════════════════════════════════════
     _title("TEMPORAL STABILITY VERDICT")
 
-    valid_yr   = [(lb, m) for lb, m in zip(yr_labels,   yr_metrics)   if m and m.get('n', 0) > 0]
-    valid_roll = [(lb, m) for lb, m in zip(roll_labels, roll_metrics) if m and m.get('n', 0) > 0]
+    valid_yr   = [(lb, m) for lb, m in zip(yr_labels,   yr_metrics)   if '[PARTIAL]' not in lb and m and m.get('n', 0) > 0]
+    valid_roll = [(lb, m) for lb, m in zip(roll_labels, roll_metrics) if '[PARTIAL]' not in lb and m and m.get('n', 0) > 0]
 
     if valid_yr:
         pf_yr  = [m['pf'] for _, m in valid_yr]
@@ -250,3 +265,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+

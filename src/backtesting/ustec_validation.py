@@ -33,10 +33,11 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(_THIS_DIR))
 sys.path.insert(0, _THIS_DIR)
 
 from backtest_config import (
-    GLOBAL_RISK_PCT, INITIAL_PER_ASSET, TEST_START, OPTIONAL_PARAMS, OPTIONAL_ASSETS,
+    GLOBAL_RISK_PCT, INITIAL_PER_ASSET, TEST_START,
 )
 from backtest_data   import load_price_data
 from backtest_runner import run_backtest
+from backtest_specs  import resolve_asset_params
 from backtest_stats  import (
     calc_metrics, daily_equity, monthly_heatmap, return_distribution,
 )
@@ -44,7 +45,8 @@ from backtest_stats  import (
 DATA_DIR = os.path.join(_REPO_ROOT, "data", "backtesting")
 CAP      = INITIAL_PER_ASSET
 ASSET    = 'USTEC'
-P        = {**OPTIONAL_PARAMS[ASSET], 'risk_pct': GLOBAL_RISK_PCT}
+P        = dict(resolve_asset_params(DATA_DIR)[ASSET])
+P['risk_pct'] = GLOBAL_RISK_PCT
 
 W = 74   # console width
 
@@ -127,8 +129,12 @@ def main():
     ysep = f"  {'─'*70}"
     print(yhdr); print(ysep)
 
+    data_start = pd.Timestamp(df['time'].iloc[0]).normalize()
+    data_end = pd.Timestamp(df['time'].iloc[-1]).normalize()
     yrs_pos = 0; yrs_neg = 0
-    for yr in sorted(t_f['Año'].unique()):
+    full_years = 0
+    seen_years = sorted(t_f['Año'].unique())
+    for yr in seen_years:
         t_y = t_f[t_f['Año'] == yr].reset_index(drop=True)
         if t_y.empty: continue
         pnl = t_y['PnL Neto USD'].values
@@ -136,19 +142,38 @@ def main():
         eq_y = [cap_y]
         for p in pnl:
             cap_y = max(cap_y + p, 0.01); eq_y.append(cap_y)
-        m_y = calc_metrics(t_y, np.array(eq_y), CAP)
+        year_start = pd.Timestamp(f"{yr}-01-01")
+        year_end = pd.Timestamp(f"{yr}-12-31")
+        is_partial = (
+            (yr == data_start.year and (data_start.month != 1 or data_start.day != 1)) or
+            (yr == data_end.year and (data_end.month != 12 or data_end.day != 31))
+        )
+        m_y = calc_metrics(
+            t_y,
+            np.array(eq_y),
+            CAP,
+            sample_start=max(year_start, data_start),
+            sample_end=min(year_end, data_end),
+        )
         if not m_y: continue
         pf_s  = f"{m_y['pf']:>5.2f}" if m_y['pf'] < 99 else "  ≫99"
         tag   = "  ◄ TEST" if yr >= TEST_START.year else ""
         tag   = "  ◄ TEST START" if yr == TEST_START.year else tag
-        if m_y['ret'] > 0: yrs_pos += 1
-        else:              yrs_neg += 1
+        if is_partial:
+            tag += "  [PARTIAL]"
+        else:
+            full_years += 1
+            if m_y['ret'] > 0: yrs_pos += 1
+            else:              yrs_neg += 1
         print(f"  {yr:<6}  {m_y['n']:>4}  {m_y['wr']:>4.1f}%  {pf_s}  "
               f"{m_y['ret']:>+7.2f}%  {m_y['mdd']:>7.2f}%  "
               f"{m_y['aw']:>+7.2f}  {m_y['al']:>+7.2f}  {m_y['exp']:>+8.4f}{tag}")
     print(ysep)
     total_yrs = yrs_pos + yrs_neg
-    print(f"  Profitable years: {yrs_pos}/{total_yrs}  ({yrs_pos/total_yrs*100:.0f}%)")
+    if total_yrs > 0:
+        print(f"  Profitable full years: {yrs_pos}/{total_yrs}  ({yrs_pos/total_yrs*100:.0f}%)")
+    if full_years != len(seen_years):
+        print("  Partial years are shown for traceability but excluded from the profitable-years summary.")
 
     # ═════════════════════════════════════════════════════════════════════════
     # SECTION 3 — STATISTICAL TESTS
@@ -324,3 +349,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

@@ -53,6 +53,12 @@ def engineer_rates_df(df: pd.DataFrame, digits: int) -> pd.DataFrame:
     )
 
     out["atr14"] = out["tr"].rolling(14).mean()
+    out["volume_mean_prior"] = (
+        pd.to_numeric(out["tick_volume"], errors="coerce")
+        .expanding(min_periods=1)
+        .mean()
+        .shift(1)
+    )
 
     point = 10 ** (-digits) if digits > 0 else 1.0
 
@@ -60,8 +66,6 @@ def engineer_rates_df(df: pd.DataFrame, digits: int) -> pd.DataFrame:
         out["spread_px"] = (
             pd.to_numeric(out["spread"], errors="coerce")
             .ffill()
-            .bfill()
-            .fillna(0)
             * point
         )
     else:
@@ -138,6 +142,7 @@ def get_signal_context(
         "lam": london_atr_mean,
         "lrr": london_range_ratio,
         "spread_signal": float(spread_signal),
+        "volume_mean_prior": float(signal_row["volume_mean_prior"]) if pd.notna(signal_row.get("volume_mean_prior", np.nan)) else np.nan,
         "today_df": today,
         "london_df": london,
     }

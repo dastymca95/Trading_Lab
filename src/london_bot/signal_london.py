@@ -71,7 +71,12 @@ def check_signal(
     if atr_value <= 0:
         return None, "atr_zero"
 
-    volume_mean = volume_means.get(symbol, 0.0)
+    # Match backtest semantics: compare the signal bar volume against a causal
+    # expanding historical mean shifted by one bar. Keep the precomputed global
+    # mean only as a fallback when the local context window cannot provide it.
+    volume_mean = float(ctx.get("volume_mean_prior", np.nan))
+    if not np.isfinite(volume_mean) or volume_mean <= 0:
+        volume_mean = volume_means.get(symbol, 0.0)
     if volume_mean > 0 and tick_volume < volume_mean:
         return None, "volume_filter_fail"
 
